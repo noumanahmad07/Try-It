@@ -1,0 +1,5 @@
+{
+  "name": "MirrorFit",
+  "description": "Premium AI Virtual Try-On web application for instant fashion visualization.",
+  "requestFramePermissions": ["camera"]
+}

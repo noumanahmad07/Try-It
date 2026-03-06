@@ -1,0 +1,21 @@
+{
+  "name": "MirrorFit AI Virtual Try-On",
+  "short_name": "MirrorFit",
+  "description": "Premium AI Virtual Try-On web application.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F0F13",
+  "theme_color": "#6366F1",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/mirrorfit/192/192",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://picsum.photos/seed/mirrorfit/512/512",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
