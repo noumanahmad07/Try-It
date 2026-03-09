@@ -33,29 +33,59 @@ const FastTrendingPage: React.FC<FastTrendingPageProps> = ({
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const fetchTrending = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const fetchTrending = useCallback(
+    async (page: number = 1, append: boolean = false) => {
+      try {
+        if (!append) {
+          setLoading(true);
+          setError(null);
+        } else {
+          setLoadingMore(true);
+        }
 
-      const startTime = performance.now();
-      const response = await withRetry(() => axios.get("/api/trending/fast"));
-      const endTime = performance.now();
+        const startTime = performance.now();
+        const params: any = { page, limit: 20 };
+        if (selectedCategory !== "all") {
+          params.category = selectedCategory;
+        }
 
-      console.log(
-        `Trending fetched in ${(endTime - startTime) / 1000} seconds`,
-      );
+        const response = await withRetry(() =>
+          axios.get("/api/trending/fast", { params }),
+        );
+        const endTime = performance.now();
 
-      setTrendingItems(response.data.trending_items);
-      setLastUpdated(response.data.last_updated);
-    } catch (err) {
-      setError("Failed to fetch trending items");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        console.log(
+          `Trending fetched in ${(endTime - startTime) / 1000} seconds`,
+        );
+
+        if (append) {
+          setTrendingItems((prev) => [
+            ...prev,
+            ...response.data.trending_items,
+          ]);
+        } else {
+          setTrendingItems(response.data.trending_items);
+          setCurrentPage(1);
+        }
+
+        setLastUpdated(response.data.last_updated);
+        setHasMore(response.data.hasMore);
+        setTotalCount(response.data.total);
+      } catch (err) {
+        setError("Failed to fetch trending items");
+        console.error(err);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [selectedCategory],
+  );
 
   const refreshTrending = async () => {
     try {
@@ -69,11 +99,26 @@ const FastTrendingPage: React.FC<FastTrendingPageProps> = ({
     }
   };
 
+  const loadMore = async () => {
+    if (!hasMore || loadingMore) return;
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    await fetchTrending(nextPage, true);
+  };
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    setCurrentPage(1);
+    setHasMore(true);
+  };
+
   useEffect(() => {
     fetchTrending();
+  }, [fetchTrending]);
 
+  useEffect(() => {
     // Auto refresh every 5 minutes
-    const interval = setInterval(fetchTrending, 5 * 60 * 1000);
+    const interval = setInterval(() => fetchTrending(1, false), 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchTrending]);
 
@@ -145,7 +190,7 @@ const FastTrendingPage: React.FC<FastTrendingPageProps> = ({
             <button
               key={category}
               className={`source-btn ${selectedCategory === category ? "active" : ""}`}
-              onClick={() => setSelectedCategory(category)}
+              onClick={() => handleCategoryChange(category)}
             >
               {category.charAt(0).toUpperCase() + category.slice(1)}
             </button>
@@ -228,6 +273,28 @@ const FastTrendingPage: React.FC<FastTrendingPageProps> = ({
       {filteredItems.length === 0 && !loading && (
         <div className="empty-state">
           <p>No trending items found</p>
+        </div>
+      )}
+
+      {/* Load More Button */}
+      {hasMore && !loading && filteredItems.length > 0 && (
+        <div className="load-more-container">
+          <button
+            className="load-more-btn"
+            onClick={loadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore
+              ? "Loading..."
+              : `Load More (${totalCount - filteredItems.length} remaining)`}
+          </button>
+        </div>
+      )}
+
+      {/* Results Count */}
+      {!loading && filteredItems.length > 0 && (
+        <div className="results-count">
+          Showing {filteredItems.length} of {totalCount} items
         </div>
       )}
     </div>

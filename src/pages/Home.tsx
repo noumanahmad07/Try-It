@@ -1,18 +1,35 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { Sparkles, Upload, Image as ImageIcon, CheckCircle, Lock, Download, Shield, Zap, Camera, TrendingUp, Wand2, Scissors, RefreshCw } from "lucide-react";
+import {
+  Sparkles,
+  Upload,
+  Image as ImageIcon,
+  CheckCircle,
+  Lock,
+  Download,
+  Shield,
+  Zap,
+  Camera,
+  TrendingUp,
+  Wand2,
+  Scissors,
+  RefreshCw,
+} from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import PWAInstallPrompt from "../components/PWAInstallPrompt";
 import { motion } from "motion/react";
 import { GoogleGenAI } from "@google/genai";
 import { withRetry, vibrate } from "../lib/utils";
-import ReactCompareImage from 'react-compare-image';
+import ReactCompareImage from "react-compare-image";
 
 export default function Home() {
   const navigate = useNavigate();
-  const [demoImages, setDemoImages] = useState<{ before: string; after: string }>({
-    before: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=800&q=80",
-    after: "https://images.unsplash.com/photo-1573496799652-408c2ac9fe98?auto=format&fit=crop&w=800&q=80"
+  const [demoImages, setDemoImages] = useState<{
+    before: string;
+    after: string;
+  }>({
+    before: "/src/assets/images/LeftSide.png",
+    after: "/src/assets/images/RightSide.avif",
   });
   const [isLoadingSlider, setIsLoadingSlider] = useState(false);
   const [trendingItems, setTrendingItems] = useState<any[]>([]);
@@ -21,7 +38,7 @@ export default function Home() {
     const fetchTrending = async () => {
       try {
         const data = await withRetry(async () => {
-          const res = await fetch('/api/trending/fast');
+          const res = await fetch("/api/trending/fast");
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
           return await res.json();
         });
@@ -47,19 +64,18 @@ export default function Home() {
     <div className="min-h-screen bg-[#0f0f13] text-white overflow-x-hidden">
       {/* PWA Install Prompt */}
       <PWAInstallPrompt />
-      
+
       {/* Mobile Container - Max width 390px */}
       <div className="max-w-[390px] mx-auto relative">
-        
         {/* Hero Section */}
-        <motion.div 
+        <motion.div
           className="px-6 pt-12 pb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
           {/* Logo/Brand */}
-          <motion.div 
+          <motion.div
             className="flex items-center gap-2 mb-8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -72,7 +88,7 @@ export default function Home() {
           </motion.div>
 
           {/* Headline */}
-          <motion.h1 
+          <motion.h1
             className="text-[28px] font-bold leading-tight mb-4"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -80,11 +96,12 @@ export default function Home() {
           >
             Found a dress you like?
             <br />
-            <span className="text-[#ec4899]">See how it looks on you</span> instantly.
+            <span className="text-[#ec4899]">See how it looks on you</span>{" "}
+            instantly.
           </motion.h1>
 
           {/* Subtext */}
-          <motion.p 
+          <motion.p
             className="text-[#a1a1aa] mb-8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -99,7 +116,8 @@ export default function Home() {
               className="w-full h-[52px] rounded-full font-semibold relative overflow-hidden"
               style={{
                 background: "linear-gradient(135deg, #ec4899 0%, #f97316 100%)",
-                boxShadow: "0 0 40px rgba(236, 72, 153, 0.5), 0 8px 16px rgba(0, 0, 0, 0.3)",
+                boxShadow:
+                  "0 0 40px rgba(236, 72, 153, 0.5), 0 8px 16px rgba(0, 0, 0, 0.3)",
               }}
               whileTap={{ scale: 0.97 }}
               initial={{ opacity: 0, scale: 0.9 }}
@@ -124,7 +142,7 @@ export default function Home() {
           </Link>
 
           {/* Trust Badge */}
-          <motion.div 
+          <motion.div
             className="flex items-center justify-center gap-2 mt-6 px-4 py-2 rounded-full bg-white/5 backdrop-blur-sm border border-white/10 w-fit mx-auto"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -138,7 +156,7 @@ export default function Home() {
         </motion.div>
 
         {/* How It Works Section */}
-        <motion.div 
+        <motion.div
           className="px-6 py-12"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -197,7 +215,7 @@ export default function Home() {
         </motion.div>
 
         {/* AI Designer & Hairstyle Section */}
-        <motion.div 
+        <motion.div
           className="px-6 py-8 space-y-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -211,11 +229,14 @@ export default function Home() {
                 </div>
                 <div className="relative z-10">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="px-2 py-0.5 rounded-full bg-[#ec4899]/20 text-[#ec4899] text-[10px] font-bold uppercase tracking-wider">New</span>
+                    <span className="px-2 py-0.5 rounded-full bg-[#ec4899]/20 text-[#ec4899] text-[10px] font-bold uppercase tracking-wider">
+                      New
+                    </span>
                     <h3 className="font-bold text-lg">AI Fashion Designer</h3>
                   </div>
                   <p className="text-[13px] text-[#a1a1aa] mb-4">
-                    Design custom garments with Nano Banana Pro. High-resolution 4K output available.
+                    Design custom garments with Nano Banana Pro. High-resolution
+                    4K output available.
                   </p>
                   <div className="flex items-center gap-2 text-[#ec4899] font-semibold text-sm">
                     Start Designing <Sparkles className="w-4 h-4" />
@@ -231,11 +252,14 @@ export default function Home() {
                 </div>
                 <div className="relative z-10">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="px-2 py-0.5 rounded-full bg-[#ec4899]/20 text-[#ec4899] text-[10px] font-bold uppercase tracking-wider">Hot</span>
+                    <span className="px-2 py-0.5 rounded-full bg-[#ec4899]/20 text-[#ec4899] text-[10px] font-bold uppercase tracking-wider">
+                      Hot
+                    </span>
                     <h3 className="font-bold text-lg">Hairstyle Try-On</h3>
                   </div>
                   <p className="text-[13px] text-[#a1a1aa] mb-4">
-                    Will short hair suit you? Try 50+ styles and colors instantly.
+                    Will short hair suit you? Try 50+ styles and colors
+                    instantly.
                   </p>
                   <div className="flex items-center gap-2 text-[#ec4899] font-semibold text-sm">
                     Try Hairstyles <Scissors className="w-4 h-4" />
@@ -247,7 +271,7 @@ export default function Home() {
         </motion.div>
 
         {/* Before/After Demo Slider */}
-        <motion.div 
+        <motion.div
           className="px-6 py-8"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -258,16 +282,21 @@ export default function Home() {
           </h2>
 
           <GlassCard className="overflow-hidden rounded-[2.5rem]">
-            <div key={`${demoImages.before}-${demoImages.after}`} className="relative bg-white/5 min-h-[400px]">
+            <div
+              key={`${demoImages.before}-${demoImages.after}`}
+              className="relative bg-white/5 min-h-[400px]"
+            >
               {isLoadingSlider ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 h-[400px]">
                   <div className="w-12 h-12 border-4 border-[#ec4899] border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm text-[#a1a1aa] animate-pulse">AI is generating real results...</p>
+                  <p className="text-sm text-[#a1a1aa] animate-pulse">
+                    AI is generating real results...
+                  </p>
                 </div>
               ) : (
-                <ReactCompareImage 
-                  leftImage={demoImages.before} 
-                  rightImage={demoImages.after} 
+                <ReactCompareImage
+                  leftImage={demoImages.before}
+                  rightImage={demoImages.after}
                   sliderLineColor="#ec4899"
                   handle={
                     <div className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center border-4 border-white">
@@ -288,7 +317,7 @@ export default function Home() {
         </motion.div>
 
         {/* Features Section */}
-        <motion.div 
+        <motion.div
           className="px-6 py-8"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -297,7 +326,9 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-4">
             <GlassCard className="p-4 text-center">
               <Zap className="w-8 h-8 mx-auto mb-2 text-[#ec4899]" />
-              <h3 className="font-semibold mb-1 text-[13px]">Instant Results</h3>
+              <h3 className="font-semibold mb-1 text-[13px]">
+                Instant Results
+              </h3>
               <p className="text-[11px] text-[#a1a1aa]">Under 10 seconds</p>
             </GlassCard>
 
@@ -323,7 +354,7 @@ export default function Home() {
 
         {/* Trending Section */}
         {trendingItems.length > 0 && (
-          <motion.div 
+          <motion.div
             className="px-6 py-8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -337,19 +368,23 @@ export default function Home() {
                 </h2>
                 <div className="flex items-center gap-1.5 mt-1">
                   <span className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse" />
-                  <span className="text-[11px] text-[#a1a1aa] font-medium uppercase tracking-wider">Live Updates</span>
+                  <span className="text-[11px] text-[#a1a1aa] font-medium uppercase tracking-wider">
+                    Live Updates
+                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <button 
+                <button
                   onClick={() => {
                     vibrate();
                     const fetchTrending = async () => {
                       try {
-                        const res = await fetch('/api/trending/fast');
+                        const res = await fetch("/api/trending/fast");
                         const data = await res.json();
                         setTrendingItems(data.trending_items.slice(0, 6));
-                      } catch (e) { console.error(e); }
+                      } catch (e) {
+                        console.error(e);
+                      }
                     };
                     fetchTrending();
                   }}
@@ -357,18 +392,23 @@ export default function Home() {
                 >
                   <RefreshCw className="w-4 h-4 text-[#ec4899]" />
                 </button>
-                <Link to="/trending" className="text-[13px] text-[#ec4899]">View All</Link>
+                <Link to="/trending" className="text-[13px] text-[#ec4899]">
+                  View All
+                </Link>
               </div>
             </div>
 
             <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
               {trendingItems.map((item) => (
                 <div key={item.id} className="flex-shrink-0 w-[160px]">
-                  <GlassCard className="overflow-hidden group" onClick={() => handleTryOn(item.image_url)}>
+                  <GlassCard
+                    className="overflow-hidden group"
+                    onClick={() => handleTryOn(item.image_url)}
+                  >
                     <div className="relative aspect-[3/4]">
-                      <img 
-                        src={item.image_url} 
-                        alt={item.title} 
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
                         className="w-full h-full object-cover transition-transform group-hover:scale-110"
                         referrerPolicy="no-referrer"
                       />
@@ -377,7 +417,9 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="p-3">
-                      <p className="text-[12px] font-medium truncate">{item.title}</p>
+                      <p className="text-[12px] font-medium truncate">
+                        {item.title}
+                      </p>
                       <button className="w-full mt-2 py-1.5 bg-white/10 rounded-lg text-[11px] font-semibold hover:bg-[#ec4899] hover:text-white transition-colors">
                         Try This
                       </button>
@@ -390,7 +432,7 @@ export default function Home() {
         )}
 
         {/* Install App CTA */}
-        <motion.div 
+        <motion.div
           className="px-6 py-8"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -398,11 +440,13 @@ export default function Home() {
         >
           <GlassCard className="p-6 text-center">
             <Sparkles className="w-12 h-12 mx-auto mb-3 text-[#ec4899]" />
-            <h3 className="font-semibold mb-2">Install App for Faster Access</h3>
+            <h3 className="font-semibold mb-2">
+              Install App for Faster Access
+            </h3>
             <p className="text-[13px] text-[#a1a1aa] mb-4">
               Add to your home screen for instant access
             </p>
-            <button 
+            <button
               className="w-full h-[44px] rounded-full bg-white/10 hover:bg-white/20 transition-colors border border-white/20"
               onClick={() => {
                 // PWA install logic would go here
@@ -415,7 +459,7 @@ export default function Home() {
         </motion.div>
 
         {/* Privacy Section */}
-        <motion.div 
+        <motion.div
           className="px-6 py-8 pb-12"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -453,7 +497,6 @@ export default function Home() {
         <div className="px-6 py-8 text-center text-[13px] text-[#a1a1aa]">
           <p>© 2026 TryOn AI • Made with 💖 for fashion lovers</p>
         </div>
-
       </div>
     </div>
   );

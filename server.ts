@@ -217,46 +217,91 @@ async function fetchPixabayHairstyles(
 
 const FASHION_SEARCH_QUERIES = {
   men: [
-    "pakistani shalwar kameez",
-    "pakistani kurta boys",
-    "pakistani pant shirt",
-    "pakistani men suit",
-    "pakistani waistcoat",
+    "pakistani shalwar kameez clothing",
+    "pakistani kurta garment",
+    "pakistani waistcoat clothing",
+    "pakistani sherwani outfit",
+    "pakistani pathani suit dress",
+    "pakistani men's clothing",
+    "pakistani traditional attire",
+    "pakistani ethnic wear men",
+    "pakistani formal outfit",
+    "pakistani designer kurta",
+    "pakistani linen shirt clothing",
+    "pakistani cotton garment",
   ],
   women: [
-    "pakistani shalwar kameez women",
-    "pakistani dress girls",
-    "pakistani women suit",
-    "pakistani lawn suit",
-    "pakistani anarkali",
+    "pakistani shalwar kameez dress",
+    "pakistani lawn suit clothing",
+    "pakistani anarkali outfit",
+    "pakistani frock garment",
+    "pakistani maxi dress clothing",
+    "pakistani chiffon suit",
+    "pakistani silk dress outfit",
+    "pakistani cotton suit dress",
+    "pakistani party wear clothing",
+    "pakistani formal dress garment",
+    "pakistani designer outfit",
+    "pakistani casual dress clothing",
+    "pakistani summer collection dress",
   ],
   bridal: [
-    "pakistani lehenga",
-    "pakistani bridal dress",
-    "pakistani wedding outfit",
-    "pakistani sharara",
-    "pakistani gharara",
+    "pakistani lehenga clothing",
+    "pakistani bridal dress outfit",
+    "pakistani wedding garment",
+    "pakistani sharara dress",
+    "pakistani gharara outfit",
+    "pakistani bridal lehenga choli",
+    "pakistani wedding gown dress",
+    "pakistani mehndi outfit",
+    "pakistani barat dress clothing",
+    "pakistani walima garment",
+    "pakistani heavy embroidery dress",
+    "pakistani designer bridal outfit",
+    "pakistani red wedding dress",
+    "pakistani gold bridal garment",
   ],
   casual: [
-    "pakistani cotton suit",
-    "pakistani lawn collection",
-    "pakistani casual dress",
-    "pakistani everyday wear",
-    "pakistani summer suit",
+    "pakistani cotton suit clothing",
+    "pakistani lawn collection dress",
+    "pakistani casual outfit",
+    "pakistani summer suit garment",
+    "pakistani linen dress",
+    "pakistani printed suit clothing",
+    "pakistani block print outfit",
+    "pakistani digital print dress",
+    "pakistani kurti garment",
+    "pakistani daily wear clothing",
+    "pakistani simple dress",
+    "pakistani office outfit",
+    "pakistani comfortable garment",
   ],
   formal: [
-    "pakistani formal suit",
-    "pakistani party wear",
-    "pakistani luxury pret",
-    "pakistani evening dress",
-    "pakistani silk suit",
+    "pakistani formal suit clothing",
+    "pakistani party wear dress",
+    "pakistani luxury pret outfit",
+    "pakistani evening dress garment",
+    "pakistani silk suit clothing",
+    "pakistani formal gown dress",
+    "pakistani cocktail outfit",
+    "pakistani designer party wear",
+    "pakistani business suit clothing",
+    "pakistani dinner dress garment",
+    "pakistani reception outfit",
+    "pakistani elegant dress clothing",
   ],
   traditional: [
-    "pakistani traditional dress",
-    "pakistani cultural outfit",
-    "pakistani eid collection",
-    "pakistani jamawar",
-    "pakistani heritage dress",
+    "pakistani traditional dress clothing",
+    "pakistani cultural outfit garment",
+    "pakistani eid collection dress",
+    "pakistani jamawar outfit",
+    "pakistani heritage clothing",
+    "pakistani festival wear dress",
+    "pakistani ethnic garment",
+    "pakistani classic outfit",
+    "pakistani vintage dress clothing",
+    "pakistani folk attire garment",
+    "pakistani regional dress outfit",
   ],
 };
 
@@ -267,35 +312,54 @@ async function fetchUnsplashTrending() {
   }
   try {
     const categories = Object.keys(FASHION_SEARCH_QUERIES);
-    const randomCategory =
-      categories[Math.floor(Math.random() * categories.length)];
-    const categoryQueries =
-      FASHION_SEARCH_QUERIES[
-        randomCategory as keyof typeof FASHION_SEARCH_QUERIES
-      ];
-    const randomQuery =
-      categoryQueries[Math.floor(Math.random() * categoryQueries.length)];
-    const response = await axios.get("https://api.unsplash.com/search/photos", {
-      params: {
-        query: `fashion ${randomQuery} full body`,
-        per_page: 30,
-        order_by: "latest",
-        client_id: process.env.UNSPLASH_ACCESS_KEY,
-      },
-      timeout: 8000,
-    });
-    return response.data.results
+    const allResults = [];
+
+    // Make 3 different queries to get more variety
+    for (let i = 0; i < 3; i++) {
+      const randomCategory =
+        categories[Math.floor(Math.random() * categories.length)];
+      const categoryQueries =
+        FASHION_SEARCH_QUERIES[
+          randomCategory as keyof typeof FASHION_SEARCH_QUERIES
+        ];
+      const randomQuery =
+        categoryQueries[Math.floor(Math.random() * categoryQueries.length)];
+
+      const response = await axios.get(
+        "https://api.unsplash.com/search/photos",
+        {
+          params: {
+            query: `fashion ${randomQuery} full body`,
+            per_page: 20, // 20 per query, total 60
+            order_by: "latest",
+            client_id: process.env.UNSPLASH_ACCESS_KEY,
+          },
+          timeout: 8000,
+        },
+      );
+
+      // Add the query used to each photo for proper titling
+      const photosWithQuery = response.data.results.map((photo: any) => ({
+        ...photo,
+        searchQuery: randomQuery,
+      }));
+
+      allResults.push(...photosWithQuery);
+    }
+    return allResults
       .map((photo: any) => ({
         id: photo.id,
         source: "unsplash",
         image_url: photo.urls.regular,
         thumb_url: photo.urls.thumb,
         title:
-          (photo.alt_description || photo.description || randomQuery)
+          (photo.alt_description || photo.description || photo.searchQuery)
             .split(/[.!?\n]/)[0]
             .substring(0, 50)
             .replace(/https?:\/\/\S+/g, "")
-            .trim() || "Fashion Trend",
+            .trim() ||
+          photo.searchQuery ||
+          "Fashion Trend",
         likes: photo.likes,
         downloads: photo.downloads || 0,
         trend_score: photo.likes * 10,
@@ -319,30 +383,44 @@ async function fetchPexelsFashion() {
   }
   try {
     const categories = Object.keys(FASHION_SEARCH_QUERIES);
-    const randomCategory =
-      categories[Math.floor(Math.random() * categories.length)];
-    const categoryQueries =
-      FASHION_SEARCH_QUERIES[
-        randomCategory as keyof typeof FASHION_SEARCH_QUERIES
-      ];
-    const randomQuery =
-      categoryQueries[Math.floor(Math.random() * categoryQueries.length)];
-    const response = await axios.get("https://api.pexels.com/v1/search", {
-      headers: { Authorization: process.env.PEXELS_API_KEY },
-      params: {
-        query: `fashion ${randomQuery}`,
-        per_page: 30,
-        orientation: "portrait",
-      },
-      timeout: 8000,
-    });
-    return response.data.photos
+    const allResults = [];
+
+    // Make 3 different queries to get more variety
+    for (let i = 0; i < 3; i++) {
+      const randomCategory =
+        categories[Math.floor(Math.random() * categories.length)];
+      const categoryQueries =
+        FASHION_SEARCH_QUERIES[
+          randomCategory as keyof typeof FASHION_SEARCH_QUERIES
+        ];
+      const randomQuery =
+        categoryQueries[Math.floor(Math.random() * categoryQueries.length)];
+
+      const response = await axios.get("https://api.pexels.com/v1/search", {
+        headers: { Authorization: process.env.PEXELS_API_KEY },
+        params: {
+          query: `fashion ${randomQuery}`,
+          per_page: 20, // 20 per query, total 60
+          orientation: "portrait",
+        },
+        timeout: 8000,
+      });
+
+      // Add the query used to each photo for proper titling
+      const photosWithQuery = response.data.photos.map((photo: any) => ({
+        ...photo,
+        searchQuery: randomQuery,
+      }));
+
+      allResults.push(...photosWithQuery);
+    }
+    return allResults
       .map((photo: any) => ({
         id: photo.id,
         source: "pexels",
         image_url: photo.src.large,
         thumb_url: photo.src.medium,
-        title: `${randomQuery.charAt(0).toUpperCase() + randomQuery.slice(1)} by ${photo.photographer}`,
+        title: `${photo.searchQuery.charAt(0).toUpperCase() + photo.searchQuery.slice(1)} by ${photo.photographer}`,
         likes: 0,
         downloads: 0,
         trend_score: 500,
@@ -360,43 +438,56 @@ async function fetchPexelsFashion() {
 
 async function fetchPixabayFashion() {
   const key = process.env.PIXABAY_API_KEY;
-  if (!key || key === "YOUR_PIXABAY_API_KEY" || key.length < 5) {
-    console.log("Pixabay API key missing or invalid placeholder, skipping...");
+  if (!key) {
+    console.log("Pixabay API key missing, skipping...");
     return [];
   }
   try {
     const categories = Object.keys(FASHION_SEARCH_QUERIES);
-    const randomCategory =
-      categories[Math.floor(Math.random() * categories.length)];
-    const categoryQueries =
-      FASHION_SEARCH_QUERIES[
-        randomCategory as keyof typeof FASHION_SEARCH_QUERIES
-      ];
-    const randomQuery = categoryQueries[
-      Math.floor(Math.random() * categoryQueries.length)
-    ].replace(/ /g, "+");
-    const response = await axios.get("https://pixabay.com/api/", {
-      params: {
-        key: key,
-        q: `fashion+${randomQuery}`,
-        image_type: "photo",
-        per_page: 30,
-        order: "latest",
-      },
-      timeout: 5000, // Add timeout to prevent hanging
-    });
+    const allResults = [];
 
-    if (!response.data || !response.data.hits) {
-      return [];
+    // Make 3 different queries to get more variety
+    for (let i = 0; i < 3; i++) {
+      const randomCategory =
+        categories[Math.floor(Math.random() * categories.length)];
+      const categoryQueries =
+        FASHION_SEARCH_QUERIES[
+          randomCategory as keyof typeof FASHION_SEARCH_QUERIES
+        ];
+      const randomQuery =
+        categoryQueries[Math.floor(Math.random() * categoryQueries.length)];
+
+      const response = await axios.get("https://pixabay.com/api/", {
+        params: {
+          key: key,
+          q: `fashion+${randomQuery.replace(/ /g, "+")}`,
+          image_type: "photo",
+          per_page: 20, // 20 per query, total 60
+          order: "latest",
+        },
+        timeout: 5000, // Add timeout to prevent hanging
+      });
+
+      if (!response.data || !response.data.hits) {
+        continue;
+      }
+
+      // Add the query used to each photo for proper titling
+      const photosWithQuery = response.data.hits.map((photo: any) => ({
+        ...photo,
+        searchQuery: randomQuery,
+      }));
+
+      allResults.push(...photosWithQuery);
     }
 
-    return response.data.hits
+    return allResults
       .map((photo: any) => ({
         id: photo.id,
         source: "pixabay",
         image_url: photo.largeImageURL,
         thumb_url: photo.previewURL,
-        title: (photo.tags || "Fashion").split(",")[0],
+        title: photo.searchQuery || (photo.tags || "Fashion").split(",")[0],
         likes: photo.likes,
         downloads: photo.downloads,
         trend_score: photo.likes * 5 + photo.downloads,
@@ -610,7 +701,7 @@ async function getTrendingFast() {
     if (count < 2) {
       uniqueItems.push(item);
     }
-    if (uniqueItems.length >= 50) break;
+    if (uniqueItems.length >= 150) break;
   }
 
   uniqueItems.sort((a, b) => (b.trend_score || 0) - (a.trend_score || 0));
@@ -832,24 +923,67 @@ async function startServer() {
   // API Routes
   app.get("/api/trending/fast", async (req, res) => {
     try {
+      const { page = 1, limit = 20, category } = req.query;
+      const pageNum = parseInt(page as string);
+      const limitNum = parseInt(limit as string);
+
       const now = Date.now();
-      if (trendingCache && now - cacheTimestamp < CACHE_DURATION) {
+      const cacheKey = `trending_${category || "all"}_${pageNum}_${limitNum}`;
+
+      // Use cache if available and fresh
+      if (trendingCache && now - cacheTimestamp < CACHE_DURATION && !category) {
+        const startIndex = (pageNum - 1) * limitNum;
+        const endIndex = startIndex + limitNum;
+        const paginatedItems = trendingCache.trending_items.slice(
+          startIndex,
+          endIndex,
+        );
+
         return res.json({
           ...trendingCache,
+          trending_items: paginatedItems,
           cached: true,
+          page: pageNum,
+          limit: limitNum,
+          total: trendingCache.trending_items.length,
+          hasMore: endIndex < trendingCache.trending_items.length,
         });
       }
 
       const trendingItems = await getTrendingFast();
+
+      // Filter by category if specified
+      let filteredItems = trendingItems;
+      if (category && category !== "all") {
+        filteredItems = trendingItems.filter((item) =>
+          item.title.toLowerCase().includes((category as string).toLowerCase()),
+        );
+      }
+
+      // Pagination
+      const startIndex = (pageNum - 1) * limitNum;
+      const endIndex = startIndex + limitNum;
+      const paginatedItems = filteredItems.slice(startIndex, endIndex);
+
       const responseData = {
         last_updated: new Date().toISOString(),
-        trending_items: trendingItems,
+        trending_items: paginatedItems,
         cached: false,
-        count: trendingItems.length,
+        page: pageNum,
+        limit: limitNum,
+        total: filteredItems.length,
+        hasMore: endIndex < filteredItems.length,
+        count: paginatedItems.length,
       };
 
-      trendingCache = responseData;
-      cacheTimestamp = now;
+      // Cache only the first page without category filter
+      if (pageNum === 1 && !category) {
+        trendingCache = {
+          ...responseData,
+          trending_items: filteredItems,
+        };
+        cacheTimestamp = now;
+      }
 
       res.json(responseData);
     } catch (e: any) {
@@ -919,6 +1053,52 @@ async function startServer() {
       res.json({
         message: "Trending data refreshed",
         count: trendingItems.length,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // API for similar garments based on uploaded image
+  app.post("/api/similar-garments", async (req, res) => {
+    try {
+      const { imageUrl, category, limit = 10 } = req.body;
+
+      // Extract keywords from the image URL or title to find similar items
+      const allItems = await getTrendingFast();
+
+      let similarItems = allItems;
+
+      // If category is specified, filter by it
+      if (category && category !== "all") {
+        similarItems = allItems.filter((item) =>
+          item.title.toLowerCase().includes(category.toLowerCase()),
+        );
+      }
+
+      // Simple similarity based on title keywords
+      if (imageUrl) {
+        // Extract potential keywords from the image URL or use category-based matching
+        const keywords = category ? [category.toLowerCase()] : [];
+
+        similarItems = similarItems.filter((item) => {
+          const titleLower = item.title.toLowerCase();
+          return (
+            keywords.some((keyword) => titleLower.includes(keyword)) ||
+            item.source === "unsplash" ||
+            item.source === "pexels"
+          ); // Prioritize quality sources
+        });
+      }
+
+      // Sort by trend score and limit results
+      similarItems.sort((a, b) => (b.trend_score || 0) - (a.trend_score || 0));
+      const limitedItems = similarItems.slice(0, parseInt(limit));
+
+      res.json({
+        similar_items: limitedItems,
+        count: limitedItems.length,
+        category: category || "all",
       });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
