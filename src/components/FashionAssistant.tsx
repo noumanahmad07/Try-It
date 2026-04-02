@@ -4,11 +4,12 @@ import { MessageSquare, X, Send, Sparkles, User, Bot } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { vibrate, cn, withRetry } from '../lib/utils';
 import { ChatMessage } from '../types';
+import { isGeminiConfigured } from '../utils/geminiConfig';
 
 export default function FashionAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'model', text: "Hi! I'm your MirrorFit AI assistant. Ask me anything about style, sizing, or how to use the app!" }
+    { role: 'model', text: "Hi! I'm your Zephora AI assistant. Ask me anything about style, sizing, or how to use the app!" }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -30,18 +31,18 @@ export default function FashionAssistant() {
     setIsTyping(true);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
+      if (!isGeminiConfigured()) {
         setMessages(prev => [...prev, { role: 'model', text: "I'm sorry, I'm currently offline as the AI service is not configured." }]);
         setIsTyping(false);
         return;
       }
 
+      const apiKey = process.env.GEMINI_API_KEY;
       const ai = new GoogleGenAI({ apiKey });
       const chat = ai.chats.create({
         model: 'gemini-3-flash-preview',
         config: {
-          systemInstruction: "You are a helpful fashion assistant for MirrorFit. You give style advice, explain how the virtual try-on works, and help users find their best look. Keep responses concise and friendly."
+          systemInstruction: "You are a helpful fashion assistant for Zephora. You give style advice, explain how the virtual try-on works, and help users find their best look. Keep responses concise and friendly."
         }
       });
 

@@ -132,7 +132,7 @@ export default function Trending({ onBack, onTryOn }: TrendingProps) {
                     className="try-on-btn flex items-center justify-center gap-2"
                   >
                     <Sparkles className="w-5 h-5" />
-                    Try On with MirrorFit
+                    Try On with Zephora
                   </button>
                 </div>
               </motion.div>

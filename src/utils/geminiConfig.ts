@@ -1,13 +1,23 @@
 import { GoogleGenAI } from "@google/genai";
 
-// The API key provided by the user as a fallback
-const FALLBACK_KEY = "AIzaSyDIaqnseaTGtuBYG5l5G_1eHo4EyNQmxGo";
-
 export const getGeminiKey = () => {
-  return process.env.GEMINI_API_KEY || FALLBACK_KEY;
+  const key = process.env.GEMINI_API_KEY;
+  return typeof key === "string" ? key.trim() : "";
 };
 
 export const getGeminiAI = () => {
   const apiKey = getGeminiKey();
+  if (!apiKey) {
+    throw new Error(
+      "Gemini API key is not configured. Please set GEMINI_API_KEY in your environment."
+    );
+  }
   return new GoogleGenAI({ apiKey });
+};
+
+export const isGeminiConfigured = () => {
+  const key = getGeminiKey();
+  // Treat the example placeholder as "not configured"
+  if (!key || key === "MY_GEMINI_API_KEY") return false;
+  return true;
 };

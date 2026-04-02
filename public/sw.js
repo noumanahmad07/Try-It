@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mirrorfit-v1';
+const CACHE_NAME = 'zephora-v1';
 const ASSETS = [
   '/',
   '/index.html',

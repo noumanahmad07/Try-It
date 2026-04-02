@@ -7,12 +7,13 @@ import { triggerHaptic } from "../utils/haptics";
 import { compressImage, blobToDataURL } from "../utils/imageCompression";
 import { Type } from "@google/genai";
 import { withRetry, cn } from "../lib/utils";
-import { getGeminiAI } from "../utils/geminiConfig";
+import { getGeminiAI, isGeminiConfigured } from "../utils/geminiConfig";
 
 export default function UploadScreen() {
   const navigate = useNavigate();
   const [bodyPhoto, setBodyPhoto] = useState<string | null>(null);
   const [garmentPhoto, setGarmentPhoto] = useState<string | null>(null);
+  const [garmentFileName, setGarmentFileName] = useState<string | null>(null);
   const [showTips, setShowTips] = useState(false);
   const [tipsType, setTipsType] = useState<"body" | "garment">("body");
   const [isCompressing, setIsCompressing] = useState(false);
@@ -27,6 +28,10 @@ export default function UploadScreen() {
     if (storedGarment) {
       setGarmentPhoto(storedGarment);
     }
+    const storedGarmentFileName = sessionStorage.getItem("garmentFileName");
+    if (storedGarmentFileName) {
+      setGarmentFileName(storedGarmentFileName);
+    }
   }, []);
 
   const analyzeBody = async (imageData: string) => {
@@ -35,6 +40,14 @@ export default function UploadScreen() {
       setAnalysis(null);
       setAnalysisError(null);
       
+      if (!isGeminiConfigured()) {
+        setAnalysisError(
+          "AI analysis is unavailable right now (Gemini not configured). You can still continue."
+        );
+        setIsAnalyzing(false);
+        return;
+      }
+
       const ai = getGeminiAI();
       const base64Data = imageData.split(',')[1];
 
@@ -95,6 +108,7 @@ export default function UploadScreen() {
           analyzeBody(dataURL);
         } else {
           setGarmentPhoto(dataURL);
+          setGarmentFileName(file.name || null);
         }
         
         triggerHaptic('success');
@@ -114,6 +128,9 @@ export default function UploadScreen() {
         triggerHaptic('medium');
         sessionStorage.setItem("bodyPhoto", bodyPhoto);
         sessionStorage.setItem("garmentPhoto", garmentPhoto);
+        if (garmentFileName) {
+          sessionStorage.setItem("garmentFileName", garmentFileName);
+        }
         if (analysis) {
           sessionStorage.setItem("bodyAnalysis", JSON.stringify(analysis));
         }
@@ -364,7 +381,10 @@ export default function UploadScreen() {
                   <motion.button 
                     className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center"
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setGarmentPhoto(null)}
+                    onClick={() => {
+                      setGarmentPhoto(null);
+                      setGarmentFileName(null);
+                    }}
                   >
                     <X className="w-5 h-5" />
                   </motion.button>

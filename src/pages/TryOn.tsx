@@ -9,7 +9,9 @@ import { Type } from "@google/genai";
 import { QRCodeSVG } from 'qrcode.react';
 import { vibrate, cn, useVoiceCommand, withRetry } from '../lib/utils';
 import { BodyAnalysis } from '../types';
-import { getGeminiAI, getGeminiKey } from "../utils/geminiConfig";
+import { getGeminiAI, getGeminiKey, isGeminiConfigured } from "../utils/geminiConfig";
+import { buildTryOnPrompt } from "../utils/tryOnPrompt";
+import GlassCard from '../components/GlassCard';
 
 interface TryOnProps {
   onBack: () => void;
@@ -32,6 +34,16 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
   const [refinePrompt, setRefinePrompt] = useState("");
   const [isRefining, setIsRefining] = useState(false);
   const initialized = useRef(false);
+  const [showClothModal, setShowClothModal] = useState(false);
+  const [modalGarmentPhoto, setModalGarmentPhoto] = useState<string | null>(null);
+  const [modalGarmentFileName, setModalGarmentFileName] = useState<string | null>(null);
+  const [modalGarmentClothingHint, setModalGarmentClothingHint] = useState<string | null>(null);
+  const [modalSuggestions, setModalSuggestions] = useState<any[]>([]);
+  const [modalIsFetchingSuggestions, setModalIsFetchingSuggestions] = useState(false);
+  const [modalSuggestionsError, setModalSuggestionsError] = useState<string | null>(null);
+  const [modalIsUploading, setModalIsUploading] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const modalFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const checkApiKey = async () => {
     // If we have a key in the environment or our hardcoded fallback, we're good
@@ -108,7 +120,113 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
     }
   };
 
-  const startTryOn = async (overridePerson?: string, overrideGarment?: string) => {
+  const openClothModal = () => {
+    vibrate();
+    setModalError(null);
+    setModalGarmentPhoto(null);
+    setModalGarmentFileName(null);
+    setModalGarmentClothingHint(null);
+    setModalSuggestions([]);
+    setModalSuggestionsError(null);
+    if (modalFileInputRef.current) modalFileInputRef.current.value = "";
+    setShowClothModal(true);
+
+    setModalIsFetchingSuggestions(true);
+    void withRetry(async () => {
+      const res = await fetch("/api/trending/fast?page=1&limit=6");
+      if (!res.ok) throw new Error("Failed to load suggestions");
+      return res.json();
+    })
+      .then((data) => {
+        setModalSuggestions(Array.isArray(data?.trending_items) ? data.trending_items : []);
+      })
+      .catch((e: any) => {
+        setModalSuggestionsError(e?.message || "Failed to load suggestions");
+      })
+      .finally(() => {
+        setModalIsFetchingSuggestions(false);
+      });
+  };
+
+  const handleModalUploadClick = () => {
+    modalFileInputRef.current?.click();
+  };
+
+  const selectSuggestedGarment = (item: any) => {
+    const imageUrl = item?.image_url || item?.imageUrl || null;
+    if (!imageUrl) return;
+    const fileName = imageUrl.split("/").pop()?.split("?")[0] || null;
+    setModalGarmentPhoto(imageUrl);
+    setModalGarmentFileName(fileName);
+    setModalGarmentClothingHint(item?.title || item?.name || null);
+    setModalError(null);
+  };
+
+  const closeClothModal = () => setShowClothModal(false);
+
+  const handleModalGarmentUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setModalError(null);
+    setModalIsUploading(true);
+    try {
+      const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1024, useWebWorker: true };
+      const compressedFile = await imageCompression(file, options);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        setModalGarmentPhoto(dataUrl);
+        setModalGarmentFileName(file.name || null);
+        setModalGarmentClothingHint(file.name || null);
+      };
+      reader.readAsDataURL(compressedFile);
+    } catch (err) {
+      setModalError("Failed to compress garment image.");
+    } finally {
+      setModalIsUploading(false);
+    }
+  };
+
+  const handleModalTryAgain = () => {
+    vibrate();
+    setModalError(null);
+    setModalGarmentPhoto(null);
+    setModalGarmentFileName(null);
+    setModalGarmentClothingHint(null);
+    if (modalFileInputRef.current) modalFileInputRef.current.value = "";
+  };
+
+  const handleModalGenerate = async () => {
+    if (!personImage) {
+      setModalError("Person image is missing. Please try again.");
+      return;
+    }
+    if (!modalGarmentPhoto) {
+      setModalError("Upload a garment image first.");
+      return;
+    }
+
+    // Ensure prompt "smart logic" can read the garment filename.
+    sessionStorage.setItem("garmentPhoto", modalGarmentPhoto);
+    sessionStorage.setItem("garmentFileName", modalGarmentFileName || "");
+    sessionStorage.setItem("garmentClothingHint", modalGarmentClothingHint || "");
+    if (customPrompt) sessionStorage.setItem("customPrompt", customPrompt);
+
+    setGarmentImage(modalGarmentPhoto);
+    setModalError(null);
+    setShowClothModal(false);
+
+    await startTryOn(personImage, modalGarmentPhoto, true);
+  };
+
+  const startTryOn = async (
+    overridePerson?: string,
+    overrideGarment?: string,
+    forceGenerate: boolean = false,
+  ) => {
+    if (isProcessing) return;
     const pImg = overridePerson || personImage;
     const gImg = overrideGarment || garmentImage;
 
@@ -124,20 +242,36 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
     setNeedsApiKey(false);
 
     try {
-      // 0. Check API Key
-      const hasKey = await checkApiKey();
-      if (!hasKey) {
-        setNeedsApiKey(true);
-        setIsProcessing(false);
-        return;
+      const storedGarmentFileName = sessionStorage.getItem("garmentFileName");
+      const storedPrompt = sessionStorage.getItem("customPrompt");
+      const storedClothingHint = sessionStorage.getItem("garmentClothingHint");
+      let analysisSnapshot = analysis;
+      const storedAnalysis = sessionStorage.getItem("bodyAnalysis");
+      if (storedAnalysis) {
+        try {
+          analysisSnapshot = JSON.parse(storedAnalysis) as BodyAnalysis;
+        } catch {
+          // Ignore parse errors and fall back to current state.
+        }
       }
+      const prompt = buildTryOnPrompt({
+        garmentFileName: storedGarmentFileName,
+        customPrompt: storedPrompt,
+        analysis: analysisSnapshot,
+        fullBodyClothingHint: storedClothingHint || undefined,
+      });
 
       // 1. Upload Images
       console.log("Uploading images for virtual trial...");
       const uploadRes = await fetch('/api/virtual-trial/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_image: pImg, cloth_image: gImg })
+        body: JSON.stringify({
+          user_image: pImg,
+          cloth_image: gImg,
+          prompt,
+          force_generate: forceGenerate,
+        })
       });
 
       if (!uploadRes.ok) throw new Error("Failed to upload images");
@@ -152,16 +286,13 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
       if (!processRes.ok) {
         const errData = await processRes.json().catch(() => ({}));
         const msg = errData.error || "Failed to start processing";
-        if (msg.toLowerCase().includes("api key") || msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("limit")) {
-          setNeedsApiKey(true);
-        }
         throw new Error(msg);
       }
 
       // 3. Poll for Status
       let status = 'processing';
       let attempts = 0;
-      const maxAttempts = 60; // 60 seconds max
+      const maxAttempts = 90; // allow slower AI generation
 
       while (status === 'processing' && attempts < maxAttempts) {
         attempts++;
@@ -211,6 +342,11 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
     setError(null);
 
     try {
+      if (!isGeminiConfigured()) {
+        setError("Refine with AI is unavailable (Gemini not configured).");
+        return;
+      }
+
       const ai = getGeminiAI();
       const base64Data = result.split(',')[1];
 
@@ -351,7 +487,7 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
                   </div>
                   <div className="flex flex-col gap-3 pt-2">
                     <button 
-                      onClick={() => startTryOn()} 
+                      onClick={() => startTryOn(undefined, undefined, true)} 
                       className="w-full h-[52px] rounded-full font-semibold bg-white text-black hover:bg-white/90 transition-colors"
                     >
                       Try Again
@@ -445,7 +581,7 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
                   {isSaving ? <Check className="w-5 h-5 text-green-500" /> : <Heart className="w-5 h-5 text-[#ec4899]" />}
                   <span>{isSaving ? "Saved!" : "Save Look"}</span>
                 </button>
-                <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent("Check my new look generated by TryOn AI!")}`)} className="btn-primary flex items-center justify-center space-x-2 py-4"><Check className="w-5 h-5" /><span>WhatsApp</span></button>
+                <button onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent("Check my new look generated by Zephora!")}`)} className="btn-primary flex items-center justify-center space-x-2 py-4"><Check className="w-5 h-5" /><span>WhatsApp</span></button>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -464,7 +600,7 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
                 </button>
               </div>
 
-              <button onClick={() => { vibrate(); setStep(1); }} className="w-full py-4 text-text-muted font-medium hover:text-white transition-colors">Try Another</button>
+              <button onClick={openClothModal} className="w-full py-4 text-text-muted font-medium hover:text-white transition-colors">Try Another</button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -482,13 +618,183 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Cloth Change Modal */}
+      <AnimatePresence>
+        {showClothModal && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-6"
+          >
+            <div className="glass p-8 rounded-3xl text-center space-y-6 max-w-[390px] w-full overflow-hidden">
+              <input
+                ref={modalFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleModalGarmentUpload}
+              />
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold">Change Clothes</h3>
+                <button
+                  onClick={closeClothModal}
+                  className="w-10 h-10 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors flex items-center justify-center"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-[12px] text-[#a1a1aa]">
+                  Upload a garment photo, then Generate a new try-on using your current photo.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <GlassCard className="p-4 bg-white/5 border-white/10">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <p className="text-[12px] font-semibold text-white">Suggested Clothes</p>
+                    {modalIsFetchingSuggestions && (
+                      <p className="text-[12px] text-[#a1a1aa]">Loading...</p>
+                    )}
+                  </div>
+
+                  {modalSuggestionsError && (
+                    <p className="text-error text-[12px] mb-3">{modalSuggestionsError}</p>
+                  )}
+
+                  {modalIsFetchingSuggestions ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="h-20 rounded-xl bg-white/5 border border-white/10"
+                        />
+                      ))}
+                    </div>
+                  ) : modalSuggestions.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {modalSuggestions.slice(0, 6).map((item, i) => (
+                        <button
+                          key={item?.id || i}
+                          onClick={() => selectSuggestedGarment(item)}
+                          className={`rounded-xl overflow-hidden border transition-colors ${
+                            modalGarmentPhoto === (item?.image_url || item?.imageUrl)
+                              ? "border-[#ec4899]"
+                              : "border-white/10"
+                          }`}
+                          disabled={modalIsUploading || isProcessing}
+                          aria-label="Select suggested garment"
+                        >
+                          <img
+                            src={item?.image_url || item?.imageUrl}
+                            alt={item?.title || item?.name || "Suggested garment"}
+                            className="w-full h-20 object-cover"
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[12px] text-[#a1a1aa]">
+                      No suggestions available right now.
+                    </p>
+                  )}
+                </GlassCard>
+
+                <GlassCard className="relative overflow-hidden">
+                  {!modalGarmentPhoto ? (
+                    <div
+                      className="flex flex-col items-center justify-center py-10 px-6 cursor-pointer"
+                      onClick={handleModalUploadClick}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#ec4899] to-[#f97316] flex items-center justify-center mb-4">
+                        <Upload className="w-8 h-8 text-white" />
+                      </div>
+                      <h4 className="font-semibold">Upload Garment</h4>
+                      <p className="text-[12px] text-[#a1a1aa] mt-1">
+                        Product photo (best results with clear images)
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <img
+                        src={modalGarmentPhoto}
+                        alt="Selected garment"
+                        className="w-full h-[220px] object-cover"
+                      />
+                      <button
+                        onClick={handleModalTryAgain}
+                        className="absolute top-3 right-3 w-10 h-10 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center"
+                      >
+                        <X className="w-5 h-5 text-white" />
+                      </button>
+                    </div>
+                  )}
+                </GlassCard>
+
+                {modalError && (
+                  <p className="text-error text-[12px] font-medium">{modalError}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleModalUploadClick}
+                  className="btn-secondary bg-white/5 border-white/10"
+                  disabled={modalIsUploading || isProcessing}
+                >
+                  Upload
+                </button>
+
+                <button
+                  onClick={handleModalGenerate}
+                  disabled={modalIsUploading || isProcessing || !modalGarmentPhoto}
+                  className="btn-primary disabled:opacity-50 disabled:saturate-0 disabled:cursor-not-allowed"
+                >
+                  {modalIsUploading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Generating
+                    </span>
+                  ) : (
+                    "Generate"
+                  )}
+                </button>
+              </div>
+
+              <button
+                onClick={handleModalTryAgain}
+                className="btn-secondary bg-white/5 border-white/10 w-full"
+              >
+                Try Again
+              </button>
+
+              <button onClick={closeClothModal} className="w-full text-text-muted font-medium hover:text-white transition-colors">
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 function ProcessingText() {
   const [index, setIndex] = useState(0);
-  const texts = ["Detecting body type...", "Analyzing skin tone...", "Matching fabric...", "Rendering result..."];
+  const texts = [
+    "Generating AI try-on...",
+    "Detecting body type...",
+    "Analyzing skin tone...",
+    "Matching fabric...",
+    "Rendering result...",
+  ];
   useEffect(() => {
     const timer = setInterval(() => setIndex(i => (i + 1) % texts.length), 2500);
     return () => clearInterval(timer);

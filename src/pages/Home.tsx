@@ -57,6 +57,8 @@ export default function Home() {
     vibrate();
     // Store garment in session and navigate
     sessionStorage.setItem("garmentPhoto", imageUrl);
+    const fileName = imageUrl.split("/").pop()?.split("?")[0] || null;
+    sessionStorage.setItem("garmentFileName", fileName || "");
     navigate("/upload");
   };
 
@@ -84,7 +86,7 @@ export default function Home() {
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ec4899] to-[#f97316] flex items-center justify-center">
               <Sparkles className="w-5 h-5" />
             </div>
-            <span className="text-xl font-semibold">TryOn AI</span>
+            <span className="text-xl font-semibold">Zephora</span>
           </motion.div>
 
           {/* Headline */}
@@ -495,7 +497,7 @@ export default function Home() {
 
         {/* Footer */}
         <div className="px-6 py-8 text-center text-[13px] text-[#a1a1aa]">
-          <p>© 2026 TryOn AI • Made with 💖 for fashion lovers</p>
+          <p>© 2026 Zephora • Made with 💖 for fashion lovers</p>
         </div>
       </div>
     </div>

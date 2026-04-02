@@ -22,7 +22,7 @@ export default function PWAInstallPrompt() {
             <Smartphone className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1">
-            <h4 className="text-[14px] font-semibold">Install TryOn AI</h4>
+            <h4 className="text-[14px] font-semibold">Install Zephora</h4>
             <p className="text-[12px] text-[#a1a1aa]">Add to home screen for better experience</p>
           </div>
           <div className="flex items-center gap-2">

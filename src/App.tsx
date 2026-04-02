@@ -44,6 +44,8 @@ export default function App() {
                 onBack={() => navigate('/')} 
                 onTryOn={(url) => {
                   sessionStorage.setItem("garmentPhoto", url);
+                  const fileName = url.split("/").pop()?.split("?")[0] || null;
+                  sessionStorage.setItem("garmentFileName", fileName || "");
                   navigate('/upload');
                 }}
               />

@@ -4,7 +4,7 @@ import { ArrowLeft, Download, Share2, Home, Sparkles, Move, RotateCw, ZoomIn, Pa
 import { motion, AnimatePresence } from "motion/react";
 import GlassCard from "../components/GlassCard";
 import { triggerHaptic } from "../utils/haptics";
-import { getGeminiAI } from "../utils/geminiConfig";
+import { getGeminiAI, isGeminiConfigured } from "../utils/geminiConfig";
 
 export default function HairstyleResult() {
   const navigate = useNavigate();
@@ -42,6 +42,12 @@ export default function HairstyleResult() {
     try {
       setIsGenerating(true);
       setError(null);
+      if (!isGeminiConfigured()) {
+        setError("AI generation for hairstyles is unavailable (Gemini not configured).");
+        setIsGenerating(false);
+        return;
+      }
+
       const ai = getGeminiAI();
 
       // Convert face photo to base64 part
@@ -196,7 +202,7 @@ export default function HairstyleResult() {
   };
 
   const handleWhatsAppShare = () => {
-    const text = `Thinking of getting this haircut 😎\nWhat do you think?\n\nTry it yourself at TryOn AI ✨`;
+    const text = `Thinking of getting this haircut 😎\nWhat do you think?\n\nTry it yourself at Zephora ✨`;
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank");
   };
