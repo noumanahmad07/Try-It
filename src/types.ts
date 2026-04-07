@@ -31,7 +31,7 @@ declare global {
 }
 
 export interface ChatMessage {
-  role: 'user' | 'model';
+  role: "user" | "model";
   text: string;
 }
 
@@ -42,4 +42,51 @@ export interface TrendingItem {
   imageUrl: string;
   category: string;
   targetAge: string;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  isVerified: boolean;
+  createdAt: string;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface SignupCredentials {
+  name: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface ForgotPasswordData {
+  email: string;
+}
+
+export interface ResetPasswordData {
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface OTPData {
+  email: string;
+  otp: string;
+}
+
+export interface AuthResponse {
+  user: AuthUser;
+  token: string;
+  refreshToken: string;
+}
+
+export interface AuthError {
+  message: string;
+  code?: string;
 }
