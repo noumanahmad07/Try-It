@@ -17,13 +17,17 @@ import {
 } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import PWAInstallPrompt from "../components/PWAInstallPrompt";
+import UserMenu from "../components/UserMenu";
 import { motion } from "motion/react";
 import { GoogleGenAI } from "@google/genai";
 import { withRetry, vibrate } from "../lib/utils";
 import ReactCompareImage from "react-compare-image";
+import { auth } from "../firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function Home() {
   const navigate = useNavigate();
+  const [user, setUser] = useState<any>(null);
   const [demoImages, setDemoImages] = useState<{
     before: string;
     after: string;
@@ -33,6 +37,15 @@ export default function Home() {
   });
   const [isLoadingSlider, setIsLoadingSlider] = useState(false);
   const [trendingItems, setTrendingItems] = useState<any[]>([]);
+
+  // Track user authentication state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const fetchTrending = async () => {
@@ -78,15 +91,20 @@ export default function Home() {
         >
           {/* Logo/Brand */}
           <motion.div
-            className="flex items-center gap-2 mb-8"
+            className="flex items-center justify-between mb-8"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
           >
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#ec4899] to-[#f97316] flex items-center justify-center">
-              <Sparkles className="w-5 h-5" />
+            <div className="flex items-center gap-2">
+              <img
+                src="/loog.png"
+                alt="Zephora Logo"
+                className="w-10 h-10 rounded-full object-cover"
+              />
+              <span className="text-xl font-semibold">Zephora</span>
             </div>
-            <span className="text-xl font-semibold">Zephora</span>
+            {user && <UserMenu user={user} />}
           </motion.div>
 
           {/* Headline */}
@@ -142,6 +160,39 @@ export default function Home() {
               />
             </motion.button>
           </Link>
+
+          {/* Auth Buttons - Only show when user is not logged in */}
+          {!user && (
+            <motion.div
+              className="flex gap-3 mt-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+            >
+              <Link to="/login" className="flex-1">
+                <motion.button
+                  className="w-full h-[44px] rounded-full font-semibold bg-white/10 border border-white/20 hover:bg-white/20 transition-all"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Sign In
+                </motion.button>
+              </Link>
+              <Link to="/signup" className="flex-1">
+                <motion.button
+                  className="w-full h-[44px] rounded-full font-semibold"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #ec4899 0%, #f97316 100%)",
+                  }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Sign Up
+                </motion.button>
+              </Link>
+            </motion.div>
+          )}
 
           {/* Trust Badge */}
           <motion.div

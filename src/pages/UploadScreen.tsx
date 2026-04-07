@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowLeft, Upload, X, Check, Info, Camera, Image as ImageIcon, Sparkles, Zap, AlertCircle, Shirt, Scissors } from "lucide-react";
+import {
+  ArrowLeft,
+  Upload,
+  X,
+  Check,
+  Info,
+  Camera,
+  Image as ImageIcon,
+  Sparkles,
+  Zap,
+  AlertCircle,
+  Shirt,
+  Scissors,
+} from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import { motion, AnimatePresence } from "motion/react";
 import { triggerHaptic } from "../utils/haptics";
@@ -8,9 +21,12 @@ import { compressImage, blobToDataURL } from "../utils/imageCompression";
 import { Type } from "@google/genai";
 import { withRetry, cn } from "../lib/utils";
 import { getGeminiAI, isGeminiConfigured } from "../utils/geminiConfig";
+import { auth } from "../firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function UploadScreen() {
   const navigate = useNavigate();
+  const [user, setUser] = useState<any>(null);
   const [bodyPhoto, setBodyPhoto] = useState<string | null>(null);
   const [garmentPhoto, setGarmentPhoto] = useState<string | null>(null);
   const [garmentFileName, setGarmentFileName] = useState<string | null>(null);
@@ -21,6 +37,15 @@ export default function UploadScreen() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState("");
+
+  // Track user authentication state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Load pre-selected garment if available
   useEffect(() => {
@@ -39,46 +64,64 @@ export default function UploadScreen() {
       setIsAnalyzing(true);
       setAnalysis(null);
       setAnalysisError(null);
-      
+
       if (!isGeminiConfigured()) {
         setAnalysisError(
-          "AI analysis is unavailable right now (Gemini not configured). You can still continue."
+          "AI analysis is unavailable right now (Gemini not configured). You can still continue.",
         );
         setIsAnalyzing(false);
         return;
       }
 
       const ai = getGeminiAI();
-      const base64Data = imageData.split(',')[1];
+      const base64Data = imageData.split(",")[1];
 
-      const response = await withRetry(() => ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [
-          { inlineData: { data: base64Data, mimeType: "image/jpeg" } },
-          { text: "Analyze this person's body type and skin tone for fashion recommendations. Return JSON: bodyType, skinTone, suggestedSize, colorPalette (3 hex colors)." }
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              bodyType: { type: Type.STRING },
-              skinTone: { type: Type.STRING },
-              suggestedSize: { type: Type.STRING },
-              colorPalette: { type: Type.ARRAY, items: { type: Type.STRING } }
+      const response = await withRetry(() =>
+        ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: [
+            { inlineData: { data: base64Data, mimeType: "image/jpeg" } },
+            {
+              text: "Analyze this person's body type and skin tone for fashion recommendations. Return JSON: bodyType, skinTone, suggestedSize, colorPalette (3 hex colors).",
             },
-            required: ["bodyType", "skinTone", "suggestedSize", "colorPalette"]
-          }
-        }
-      }));
+          ],
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                bodyType: { type: Type.STRING },
+                skinTone: { type: Type.STRING },
+                suggestedSize: { type: Type.STRING },
+                colorPalette: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+              },
+              required: [
+                "bodyType",
+                "skinTone",
+                "suggestedSize",
+                "colorPalette",
+              ],
+            },
+          },
+        }),
+      );
 
-      const data = JSON.parse(response.text || '{}');
+      const data = JSON.parse(response.text || "{}");
       setAnalysis(data);
-      triggerHaptic('success');
+      triggerHaptic("success");
     } catch (error: any) {
       console.error("Analysis failed:", error);
-      if (error.message?.includes('quota') || error.status === 'RESOURCE_EXHAUSTED' || error.message?.includes('429')) {
-        setAnalysisError("AI Quota exceeded. You can still proceed, but results might be less accurate.");
+      if (
+        error.message?.includes("quota") ||
+        error.status === "RESOURCE_EXHAUSTED" ||
+        error.message?.includes("429")
+      ) {
+        setAnalysisError(
+          "AI Quota exceeded. You can still proceed, but results might be less accurate.",
+        );
       } else {
         setAnalysisError("AI Analysis failed. You can still proceed manually.");
       }
@@ -89,7 +132,7 @@ export default function UploadScreen() {
 
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    type: "body" | "garment"
+    type: "body" | "garment",
   ) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -100,9 +143,9 @@ export default function UploadScreen() {
           maxHeight: 1000,
           quality: 0.7,
         });
-        
+
         const dataURL = await blobToDataURL(compressedBlob);
-        
+
         if (type === "body") {
           setBodyPhoto(dataURL);
           analyzeBody(dataURL);
@@ -110,11 +153,11 @@ export default function UploadScreen() {
           setGarmentPhoto(dataURL);
           setGarmentFileName(file.name || null);
         }
-        
-        triggerHaptic('success');
+
+        triggerHaptic("success");
       } catch (error) {
         console.error("Error processing image:", error);
-        triggerHaptic('error');
+        triggerHaptic("error");
         alert("Failed to process image.");
       } finally {
         setIsCompressing(false);
@@ -123,9 +166,16 @@ export default function UploadScreen() {
   };
 
   const handleContinue = () => {
+    // Check if user is authenticated
+    if (!user) {
+      alert("Please login first to generate try-on");
+      navigate("/login");
+      return;
+    }
+
     if (bodyPhoto && garmentPhoto) {
       try {
-        triggerHaptic('medium');
+        triggerHaptic("medium");
         sessionStorage.setItem("bodyPhoto", bodyPhoto);
         sessionStorage.setItem("garmentPhoto", garmentPhoto);
         if (garmentFileName) {
@@ -140,7 +190,9 @@ export default function UploadScreen() {
         navigate("/processing");
       } catch (error) {
         console.error("Session storage error:", error);
-        alert("The photos are too large to process. Please try smaller images or a different browser.");
+        alert(
+          "The photos are too large to process. Please try smaller images or a different browser.",
+        );
       }
     }
   };
@@ -152,7 +204,7 @@ export default function UploadScreen() {
         <div className="sticky top-0 z-10 backdrop-blur-xl bg-[#0f0f13]/80 border-b border-white/10">
           <div className="flex items-center justify-between px-6 py-4">
             <Link to="/">
-              <motion.button 
+              <motion.button
                 className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center"
                 whileTap={{ scale: 0.95 }}
               >
@@ -167,14 +219,12 @@ export default function UploadScreen() {
         {/* Tab Switcher */}
         <div className="px-6 mb-8">
           <div className="flex bg-[#1a1a1f] p-1.5 rounded-full border border-white/5 shadow-2xl">
-            <button 
-              className="flex-1 py-3 rounded-full text-[13px] font-bold transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-[#ec4899] to-[#f97316] text-white shadow-lg"
-            >
+            <button className="flex-1 py-3 rounded-full text-[13px] font-bold transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-[#ec4899] to-[#f97316] text-white shadow-lg">
               <Shirt className="w-4 h-4" />
               Clothes
             </button>
-            <button 
-              onClick={() => navigate('/hairstyle')}
+            <button
+              onClick={() => navigate("/hairstyle")}
               className="flex-1 py-3 rounded-full text-[13px] font-bold transition-all flex items-center justify-center gap-2 text-[#a1a1aa] hover:text-white"
             >
               <Scissors className="w-4 h-4" />
@@ -187,15 +237,26 @@ export default function UploadScreen() {
         <div className="px-6 py-6">
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-              <motion.div 
+              <motion.div
                 className="h-full bg-gradient-to-r from-[#ec4899] to-[#f97316]"
                 initial={{ width: "0%" }}
-                animate={{ width: bodyPhoto && garmentPhoto ? "100%" : bodyPhoto || garmentPhoto ? "50%" : "0%" }}
+                animate={{
+                  width:
+                    bodyPhoto && garmentPhoto
+                      ? "100%"
+                      : bodyPhoto || garmentPhoto
+                        ? "50%"
+                        : "0%",
+                }}
                 transition={{ duration: 0.3 }}
               />
             </div>
             <span className="text-[13px] text-[#a1a1aa]">
-              {bodyPhoto && garmentPhoto ? "2/2" : bodyPhoto || garmentPhoto ? "1/2" : "0/2"}
+              {bodyPhoto && garmentPhoto
+                ? "2/2"
+                : bodyPhoto || garmentPhoto
+                  ? "1/2"
+                  : "0/2"}
             </span>
           </div>
         </div>
@@ -209,7 +270,7 @@ export default function UploadScreen() {
           >
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold">Your Full Body Photo</h2>
-              <button 
+              <button
                 className="text-[#ec4899] text-[13px] flex items-center gap-1"
                 onClick={() => {
                   setTipsType("body");
@@ -248,13 +309,13 @@ export default function UploadScreen() {
             ) : (
               <div className="space-y-4">
                 <GlassCard className="relative overflow-hidden">
-                  <img 
-                    src={bodyPhoto} 
-                    alt="Body" 
+                  <img
+                    src={bodyPhoto}
+                    alt="Body"
                     className="w-full h-[300px] object-cover"
                   />
                   <div className="absolute top-3 right-3 flex gap-2">
-                    <motion.button 
+                    <motion.button
                       className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center"
                       whileTap={{ scale: 0.95 }}
                       onClick={() => {
@@ -287,18 +348,27 @@ export default function UploadScreen() {
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                     >
-                      <GlassCard className={cn("p-4 bg-white/5 border-white/10", analysisError ? "border-error/20" : "")}>
+                      <GlassCard
+                        className={cn(
+                          "p-4 bg-white/5 border-white/10",
+                          analysisError ? "border-error/20" : "",
+                        )}
+                      >
                         {isAnalyzing ? (
                           <div className="flex items-center gap-3">
                             <div className="w-5 h-5 border-2 border-[#ec4899] border-t-transparent rounded-full animate-spin" />
-                            <p className="text-[13px] text-[#a1a1aa]">AI is analyzing your body type...</p>
+                            <p className="text-[13px] text-[#a1a1aa]">
+                              AI is analyzing your body type...
+                            </p>
                           </div>
                         ) : analysisError ? (
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-error/10 flex items-center justify-center">
                               <AlertCircle className="w-4 h-4 text-error" />
                             </div>
-                            <p className="text-[12px] text-error/80">{analysisError}</p>
+                            <p className="text-[12px] text-error/80">
+                              {analysisError}
+                            </p>
                           </div>
                         ) : (
                           <div className="flex items-center justify-between">
@@ -307,14 +377,24 @@ export default function UploadScreen() {
                                 <Zap className="w-4 h-4 text-[#22c55e]" />
                               </div>
                               <div>
-                                <p className="text-[11px] text-[#a1a1aa] uppercase tracking-wider font-bold">AI Analysis Complete</p>
-                                <p className="text-[14px] font-semibold">{analysis.bodyType} • {analysis.skinTone}</p>
+                                <p className="text-[11px] text-[#a1a1aa] uppercase tracking-wider font-bold">
+                                  AI Analysis Complete
+                                </p>
+                                <p className="text-[14px] font-semibold">
+                                  {analysis.bodyType} • {analysis.skinTone}
+                                </p>
                               </div>
                             </div>
                             <div className="flex gap-1">
-                              {analysis.colorPalette.map((color: string, i: number) => (
-                                <div key={i} className="w-4 h-4 rounded-full border border-white/10" style={{ backgroundColor: color }} />
-                              ))}
+                              {analysis.colorPalette.map(
+                                (color: string, i: number) => (
+                                  <div
+                                    key={i}
+                                    className="w-4 h-4 rounded-full border border-white/10"
+                                    style={{ backgroundColor: color }}
+                                  />
+                                ),
+                              )}
                             </div>
                           </div>
                         )}
@@ -334,7 +414,7 @@ export default function UploadScreen() {
           >
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold">Garment Image</h2>
-              <button 
+              <button
                 className="text-[#ec4899] text-[13px] flex items-center gap-1"
                 onClick={() => {
                   setTipsType("garment");
@@ -372,13 +452,13 @@ export default function UploadScreen() {
               </GlassCard>
             ) : (
               <GlassCard className="relative overflow-hidden">
-                <img 
-                  src={garmentPhoto} 
-                  alt="Garment" 
+                <img
+                  src={garmentPhoto}
+                  alt="Garment"
                   className="w-full h-[300px] object-cover"
                 />
                 <div className="absolute top-3 right-3 flex gap-2">
-                  <motion.button 
+                  <motion.button
                     className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center"
                     whileTap={{ scale: 0.95 }}
                     onClick={() => {
@@ -446,7 +526,7 @@ export default function UploadScreen() {
         {/* Continue Button (Fixed at bottom) */}
         <AnimatePresence>
           {bodyPhoto && garmentPhoto && (
-            <motion.div 
+            <motion.div
               className="fixed bottom-0 left-0 right-0 p-6 backdrop-blur-xl bg-[#0f0f13]/90 border-t border-white/10"
               initial={{ y: 100, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -456,7 +536,8 @@ export default function UploadScreen() {
                 <motion.button
                   className="w-full h-[52px] rounded-full font-semibold"
                   style={{
-                    background: "linear-gradient(135deg, #ec4899 0%, #f97316 100%)",
+                    background:
+                      "linear-gradient(135deg, #ec4899 0%, #f97316 100%)",
                     boxShadow: "0 0 40px rgba(236, 72, 153, 0.5)",
                   }}
                   whileTap={{ scale: 0.97 }}
@@ -478,7 +559,7 @@ export default function UploadScreen() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              <div 
+              <div
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 onClick={() => setShowTips(false)}
               />
@@ -490,7 +571,7 @@ export default function UploadScreen() {
                 transition={{ type: "spring", damping: 25 }}
               >
                 <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-6" />
-                
+
                 <h2 className="text-[22px] font-semibold mb-4">
                   {tipsType === "body" ? "Photo Tips" : "Garment Tips"}
                 </h2>
@@ -499,42 +580,60 @@ export default function UploadScreen() {
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#22c55e] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#a1a1aa]">Stand against a plain wall</p>
+                      <p className="text-[#a1a1aa]">
+                        Stand against a plain wall
+                      </p>
                     </div>
                     <div className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#22c55e] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#a1a1aa]">Ensure good lighting (natural light works best)</p>
+                      <p className="text-[#a1a1aa]">
+                        Ensure good lighting (natural light works best)
+                      </p>
                     </div>
                     <div className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#22c55e] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#a1a1aa]">Full body should be visible</p>
+                      <p className="text-[#a1a1aa]">
+                        Full body should be visible
+                      </p>
                     </div>
                     <div className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#22c55e] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#a1a1aa]">Wear fitted clothing (avoid baggy clothes)</p>
+                      <p className="text-[#a1a1aa]">
+                        Wear fitted clothing (avoid baggy clothes)
+                      </p>
                     </div>
                     <div className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#22c55e] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#a1a1aa]">Stand straight with arms slightly away from body</p>
+                      <p className="text-[#a1a1aa]">
+                        Stand straight with arms slightly away from body
+                      </p>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#22c55e] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#a1a1aa]">Use clear product images from online stores</p>
+                      <p className="text-[#a1a1aa]">
+                        Use clear product images from online stores
+                      </p>
                     </div>
                     <div className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#22c55e] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#a1a1aa]">Garment should be on a model or mannequin</p>
+                      <p className="text-[#a1a1aa]">
+                        Garment should be on a model or mannequin
+                      </p>
                     </div>
                     <div className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#22c55e] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#a1a1aa]">Avoid heavily edited or filtered images</p>
+                      <p className="text-[#a1a1aa]">
+                        Avoid heavily edited or filtered images
+                      </p>
                     </div>
                     <div className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#22c55e] flex-shrink-0 mt-0.5" />
-                      <p className="text-[#a1a1aa]">High resolution images work best</p>
+                      <p className="text-[#a1a1aa]">
+                        High resolution images work best
+                      </p>
                     </div>
                   </div>
                 )}

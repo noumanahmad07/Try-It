@@ -1,6 +1,5 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import Replicate from "replicate";
 import dotenv from "dotenv";
 import axios from "axios";
 import { GoogleGenAI } from "@google/genai";
@@ -11,10 +10,6 @@ import { Client as GradioClient, handle_file } from "@gradio/client";
 dotenv.config();
 // Load additional local overrides (useful for HF_API_KEY during development).
 dotenv.config({ path: ".env.local" });
-
-const replicate = process.env.REPLICATE_API_TOKEN
-  ? new Replicate({ auth: process.env.REPLICATE_API_TOKEN })
-  : null;
 
 // Simple in-memory cache to replace Redis
 let trendingCache: any = null;
@@ -48,7 +43,7 @@ async function generateStableDiffusionImageBuffer(input: {
   const hfApiKey = process.env.HF_API_KEY;
   if (!hfApiKey) {
     throw new Error(
-      "Hugging Face API key is not configured on the server. Please set HF_API_KEY in .env."
+      "Hugging Face API key is not configured on the server. Please set HF_API_KEY in .env.",
     );
   }
 
@@ -231,76 +226,11 @@ function extractGarmentPromptFromTryOnPrompt(prompt: string) {
   const startIdx = p.indexOf(startToken);
   const endIdx = p.indexOf(endToken);
   if (startIdx >= 0) {
-    const desc = endIdx > startIdx ? p.slice(startIdx + startToken.length, endIdx) : "";
+    const desc =
+      endIdx > startIdx ? p.slice(startIdx + startToken.length, endIdx) : "";
     if (desc.trim()) return desc.trim();
   }
   return p.length > 120 ? p.slice(0, 120).trim() : p || "a stylish garment";
-}
-
-let idmVtonApp: any = null;
-async function getIdmVtonApp() {
-  if (idmVtonApp) return idmVtonApp;
-  idmVtonApp = await GradioClient.connect("yisol/IDM-VTON");
-  return idmVtonApp;
-}
-
-async function generateIdmVtonImageBuffer(input: {
-  personImageDataUrl: string;
-  garmentImageDataUrl: string;
-  tryOnPrompt: string;
-}) {
-  const app = await getIdmVtonApp();
-
-  const person = dataUrlToBuffer(input.personImageDataUrl);
-  const garment = dataUrlToBuffer(input.garmentImageDataUrl);
-
-  const personBlob = new Blob([person.buffer], { type: person.mimeType || "image/png" });
-  const garmentBlob = new Blob([garment.buffer], {
-    type: garment.mimeType || "image/png",
-  });
-
-  const personFile = handle_file(personBlob);
-  const garmentFile = handle_file(garmentBlob);
-
-  const garmentPrompt = extractGarmentPromptFromTryOnPrompt(input.tryOnPrompt);
-
-  // Inputs per IDM-VTON gradio config (api_name: "tryon"):
-  // [Human(imageeditor), Garment(image), Clothing prompt(text), Auto-mask(bool), Auto-crop(bool), Steps(number), Seed(number)]
-  const steps = 30;
-  const seed = -1;
-
-  const result: any = await app.predict("/tryon", [
-    personFile,
-    garmentFile,
-    garmentPrompt,
-    true,
-    true,
-    steps,
-    seed,
-  ]);
-
-  // Gradio typically returns [masked_image, output_image]
-  const output = Array.isArray(result) ? result[result.length - 1] : result;
-
-  // The gradio client usually returns a Blob or File-like object.
-  if (!output) throw new Error("IDM-VTON returned empty output");
-
-  if (Buffer.isBuffer(output)) return output;
-  if (output instanceof ArrayBuffer) return Buffer.from(output);
-  if (output instanceof Blob) {
-    const ab = await output.arrayBuffer();
-    return Buffer.from(ab);
-  }
-  if (typeof output.arrayBuffer === "function") {
-    const ab = await output.arrayBuffer();
-    return Buffer.from(ab);
-  }
-  if (typeof output.url === "string") {
-    const res = await axios.get(output.url, { responseType: "arraybuffer" });
-    return Buffer.from(res.data);
-  }
-
-  throw new Error("Unsupported IDM-VTON output format");
 }
 
 /*
@@ -1259,22 +1189,11 @@ async function startServer() {
     // Kick off async generation so the frontend can poll /status.
     void (async () => {
       try {
-        const resultBuffer = await generateIdmVtonImageBuffer({
-          personImageDataUrl: job.user_image,
-          garmentImageDataUrl: job.cloth_image,
-          tryOnPrompt:
-            ((job.prompt || "").toString() ||
-              "person wearing stylish garment, perfect fit"),
-        }).catch(async () => {
-          // Fallback: best-effort text-to-image generation if virtual try-on fails.
-          return generateStableDiffusionImageBuffer({
-            prompt:
-              ((job.prompt || "").toString() ||
-                "A realistic full body image of a person wearing stylish clothing."),
-            initImage: job.user_image,
-            clothImage: job.cloth_image,
-            force: !!job.force_generate,
-          });
+        const prompt = `person wearing fashionable garment, perfect fit, high quality, realistic, ${(job.prompt || "").toString() || "stylish outfit"}`;
+        const resultBuffer = await generateStableDiffusionImageBuffer({
+          prompt: prompt,
+          initImage: job.user_image,
+          force: false,
         });
 
         job.status = "completed";
@@ -1598,32 +1517,47 @@ async function startServer() {
     try {
       const { person_image, garment_image } = req.body;
 
-      if (!replicate) {
-        throw new Error("REPLICATE_API_TOKEN is not configured.");
-      }
-
-      console.log("Starting Replicate Try-On...");
-
-      const output = await replicate.run(
-        "cuuupid/idm-vton:c871bb9b0ad21223066831fbc97ce2e3939423272d033a6df6538a02b38cb084",
-        {
-          input: {
-            crop: false,
-            seed: 42,
-            steps: 30,
-            category: "upper_body",
-            force_dc: false,
-            human_img: person_image,
-            garm_img: garment_image,
-            garment_des: "fashion garment",
-          },
-        },
+      console.log(
+        "Starting Virtual Try-On with Hugging Face Stable Diffusion...",
       );
 
-      console.log("Replicate Try-On Complete:", output);
-      res.json({ result: output });
+      // Try Hugging Face Stable Diffusion first
+      const prompt = `KEEP EXACT SAME PERSON, only change clothing to ${req.body.prompt || "stylish garment"}, same face, same hairstyle, same body, same pose, same skin tone, only replace shirt, maintain identity perfectly, high quality, realistic lighting`;
+
+      try {
+        const result = await generateStableDiffusionImageBuffer({
+          prompt: prompt,
+          initImage: person_image, // Use person image as init for better results
+          force: false,
+        });
+
+        // Convert buffer to base64 for response
+        const base64Result = result.toString("base64");
+        const dataUrl = `data:image/png;base64,${base64Result}`;
+
+        console.log(
+          "Virtual Try-On Complete (using Hugging Face Stable Diffusion)",
+        );
+        res.json({
+          result: dataUrl,
+          note: "AI model limitation: Text-to-image models create new images rather than modifying existing person. For true virtual try-on, specialized garment transfer models are needed.",
+          suggestion:
+            "Current result shows AI-generated person wearing requested garment style. Original person identity is not preserved due to model limitations.",
+        });
+      } catch (hfError: any) {
+        console.log("Hugging Face failed, using fallback:", hfError.message);
+
+        // Final fallback: Return person image with note
+        const fallbackResult = person_image || garment_image;
+        res.json({
+          result: fallbackResult,
+          fallback: true,
+          message:
+            "Using fallback - please configure HF_API_KEY for AI processing",
+        });
+      }
     } catch (e: any) {
-      console.error("Replicate Error:", e);
+      console.error("Virtual Try-On Error:", e);
       res.status(500).json({ error: e.message });
     }
   });
