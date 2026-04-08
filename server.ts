@@ -1515,50 +1515,81 @@ async function startServer() {
 
   app.post("/api/tryon", async (req, res) => {
     try {
-      const { person_image, garment_image } = req.body;
+      const { person_image, garment_image, item_type = "shirt" } = req.body;
 
-      console.log(
-        "Starting Virtual Try-On with Hugging Face Stable Diffusion...",
+      console.log("Starting Virtual Try-On with Python API...");
+
+      // Create proper multipart form data using Buffer.concat
+      const boundary = "----formdata-boundary-" + Math.random().toString(16);
+
+      const personData = Buffer.from(person_image.split(",")[1], "base64");
+      const garmentData = Buffer.from(garment_image.split(",")[1], "base64");
+
+      const personHeader = Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="person_image"; filename="person.png"\r\nContent-Type: image/png\r\n\r\n`,
+      );
+      const garmentHeader = Buffer.from(
+        `\r\n--${boundary}\r\nContent-Disposition: form-data; name="garment_image"; filename="garment.png"\r\nContent-Type: image/png\r\n\r\n`,
+      );
+      const itemHeader = Buffer.from(
+        `\r\n--${boundary}\r\nContent-Disposition: form-data; name="item_type"\r\n\r\n${item_type}\r\n--${boundary}--\r\n`,
       );
 
-      // Try Hugging Face Stable Diffusion first
-      const prompt = `KEEP EXACT SAME PERSON, only change clothing to ${req.body.prompt || "stylish garment"}, same face, same hairstyle, same body, same pose, same skin tone, only replace shirt, maintain identity perfectly, high quality, realistic lighting`;
+      const formData = Buffer.concat([
+        personHeader,
+        personData,
+        garmentHeader,
+        garmentData,
+        itemHeader,
+      ]);
 
-      try {
-        const result = await generateStableDiffusionImageBuffer({
-          prompt: prompt,
-          initImage: person_image, // Use person image as init for better results
-          force: false,
-        });
+      const response = await axios.post(
+        "http://localhost:8000/api/tryon",
+        formData,
+        {
+          headers: {
+            "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          },
+          timeout: 30000, // 30 second timeout
+        },
+      );
 
-        // Convert buffer to base64 for response
-        const base64Result = result.toString("base64");
-        const dataUrl = `data:image/png;base64,${base64Result}`;
-
-        console.log(
-          "Virtual Try-On Complete (using Hugging Face Stable Diffusion)",
-        );
-        res.json({
-          result: dataUrl,
-          note: "AI model limitation: Text-to-image models create new images rather than modifying existing person. For true virtual try-on, specialized garment transfer models are needed.",
-          suggestion:
-            "Current result shows AI-generated person wearing requested garment style. Original person identity is not preserved due to model limitations.",
-        });
-      } catch (hfError: any) {
-        console.log("Hugging Face failed, using fallback:", hfError.message);
-
-        // Final fallback: Return person image with note
-        const fallbackResult = person_image || garment_image;
-        res.json({
-          result: fallbackResult,
-          fallback: true,
-          message:
-            "Using fallback - please configure HF_API_KEY for AI processing",
-        });
-      }
+      console.log("Virtual Try-On Complete (using Python API)");
+      res.json(response.data);
     } catch (e: any) {
       console.error("Virtual Try-On Error:", e);
-      res.status(500).json({ error: e.message });
+
+      // Fallback to Hugging Face if Python API is not available
+      if (e.code === "ECONNREFUSED") {
+        console.log(
+          "Python API not available, falling back to Hugging Face...",
+        );
+
+        const prompt = `KEEP EXACT SAME PERSON, only change clothing to ${req.body.prompt || "stylish garment"}, same face, same hairstyle, same body, same pose, same skin tone, only replace shirt, maintain identity perfectly, high quality, realistic lighting`;
+
+        try {
+          const result = await generateStableDiffusionImageBuffer({
+            prompt: prompt,
+            initImage: req.body.person_image,
+            force: false,
+          });
+
+          const base64Result = result.toString("base64");
+          const dataUrl = `data:image/png;base64,${base64Result}`;
+
+          res.json({
+            result: dataUrl,
+            fallback: true,
+            message: "Using Hugging Face fallback - Python API not available",
+          });
+        } catch (hfError: any) {
+          res
+            .status(500)
+            .json({ error: "Both Python API and Hugging Face failed" });
+        }
+      } else {
+        res.status(500).json({ error: e.message });
+      }
     }
   });
 
