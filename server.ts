@@ -5,11 +5,19 @@ import axios from "axios";
 import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
 import { InferenceClient } from "@huggingface/inference";
-import { Client as GradioClient, handle_file } from "@gradio/client";
 
 dotenv.config();
 // Load additional local overrides (useful for HF_API_KEY during development).
 dotenv.config({ path: ".env.local" });
+
+function getGeminiApiKey() {
+  return (
+    process.env.API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    ""
+  );
+}
 
 // Simple in-memory cache to replace Redis
 let trendingCache: any = null;
@@ -232,202 +240,6 @@ function extractGarmentPromptFromTryOnPrompt(prompt: string) {
   }
   return p.length > 120 ? p.slice(0, 120).trim() : p || "a stylish garment";
 }
-
-/*
-// Hugging Face Stable Diffusion (img2img/text-to-image) cache (duplicate block - kept commented)
-let hfLastCache:
-  | { key: string; buffer: Buffer; createdAt: number }
-  | null = null;
-const HF_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex");
-}
-
-function hashImageForCache(dataUrl: string | undefined | null) {
-  if (!dataUrl) return "no-image";
-  // Avoid hashing huge base64 strings; sample both ends.
-  const start = dataUrl.slice(0, 2000);
-  const end = dataUrl.slice(Math.max(0, dataUrl.length - 2000));
-  return sha256Hex(start + end);
-}
-
-async function generateStableDiffusionImageBuffer(input: {
-  prompt: string;
-  initImage?: string | null;
-  clothImage?: string | null;
-  force?: boolean;
-  seed?: number | null;
-}) {
-  const hfApiKey = process.env.HF_API_KEY;
-  const hfModel = process.env.HF_MODEL || "stabilityai/stable-diffusion-1-5";
-  if (!hfApiKey) {
-    throw new Error(
-      "Hugging Face API key is not configured on the server. Please set HF_API_KEY in .env."
-    );
-  }
-
-  const prompt = (input.prompt || "").trim();
-  if (!prompt) {
-    throw new Error("Prompt is required.");
-  }
-
-  const seed =
-    typeof input.seed === "number" && Number.isFinite(input.seed)
-      ? input.seed
-      : Math.floor(Math.random() * 1_000_000_000);
-
-  const strength = 0.65;
-  const guidanceScale = 7.5;
-  const numInferenceSteps = 30;
-  const width = 512;
-  const height = 512;
-  const negativePrompt =
-    "blurry, deformed, bad anatomy, extra limbs, extra fingers, low quality, watermark, text, logo";
-
-  const cacheKey = sha256Hex(
-    [
-      hfModel,
-      prompt,
-      hashImageForCache(input.initImage),
-      hashImageForCache(input.clothImage),
-    ].join("|"),
-  );
-
-  if (!input.force && hfLastCache && hfLastCache.key === cacheKey) {
-    if (Date.now() - hfLastCache.createdAt < HF_CACHE_TTL_MS) {
-      return hfLastCache.buffer;
-    }
-  }
-
-  const url = `https://api-inference.huggingface.co/models/${encodeURIComponent(
-    hfModel,
-  )}`;
-
-  async function callHf(body: any) {
-    const response = await axios.post(url, body, {
-      headers: {
-        Authorization: `Bearer ${hfApiKey}`,
-        "Content-Type": "application/json",
-        Accept: "image/png",
-      },
-      responseType: "arraybuffer",
-      timeout: 180000,
-    });
-
-    const contentType = (response.headers["content-type"] || "").toString();
-    const buffer = Buffer.from(response.data);
-
-    if (!contentType.includes("image")) {
-      const text = buffer.toString("utf-8");
-      // Try to provide useful HF error message.
-      try {
-        const parsed = JSON.parse(text);
-        throw new Error(parsed.error || parsed.message || "Hugging Face image generation failed.");
-      } catch {
-        throw new Error(`Hugging Face response was not an image (content-type: ${contentType}).`);
-      }
-    }
-
-    if (!buffer || buffer.length < 1000) {
-      throw new Error("Hugging Face returned an empty image.");
-    }
-
-    return buffer;
-  }
-
-  const initImage = input.initImage || undefined;
-  const initImageBase64 = initImage?.includes(",")
-    ? initImage.split(",")[1]
-    : initImage;
-
-  // Try img2img first (img2img support varies by model). If it fails, fall back to text-to-image.
-  if (initImage) {
-    const img2imgBodies: any[] = [
-      {
-        inputs: {
-          prompt,
-          negative_prompt: negativePrompt,
-          init_image: initImage,
-          strength,
-          seed,
-          guidance_scale: guidanceScale,
-          num_inference_steps: numInferenceSteps,
-          width,
-          height,
-        },
-      },
-      {
-        inputs: {
-          prompt,
-          negative_prompt: negativePrompt,
-          init_image: initImageBase64,
-          strength,
-          seed,
-          guidance_scale: guidanceScale,
-          num_inference_steps: numInferenceSteps,
-          width,
-          height,
-        },
-      },
-      {
-        inputs: {
-          prompt,
-          negative_prompt: negativePrompt,
-          image: initImage,
-          strength,
-          seed,
-          guidance_scale: guidanceScale,
-          num_inference_steps: numInferenceSteps,
-          width,
-          height,
-        },
-      },
-      {
-        inputs: {
-          prompt,
-          negative_prompt: negativePrompt,
-          image: initImageBase64,
-          strength,
-          seed,
-          guidance_scale: guidanceScale,
-          num_inference_steps: numInferenceSteps,
-          width,
-          height,
-        },
-      },
-    ];
-
-    for (const body of img2imgBodies) {
-      try {
-        const buffer = await callHf(body);
-        hfLastCache = { key: cacheKey, buffer, createdAt: Date.now() };
-        return buffer;
-      } catch (e) {
-        // Try the next img2img payload variant.
-        continue;
-      }
-    }
-  }
-
-  // Text-to-image fallback.
-  const textBody = {
-    inputs: {
-      prompt,
-      negative_prompt: negativePrompt,
-      seed,
-      guidance_scale: guidanceScale,
-      num_inference_steps: numInferenceSteps,
-      width,
-      height,
-    },
-  };
-
-  const buffer = await callHf(textBody);
-  hfLastCache = { key: cacheKey, buffer, createdAt: Date.now() };
-  return buffer;
-}
-*/
 
 // Virtual Trial Job Store
 const virtualTrialJobs: Record<string, any> = {};
@@ -1127,7 +939,20 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: "50mb" }));
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+    );
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
+  app.use(express.json({ limit: '50mb' }));
 
   // Virtual Trial APIs (Ported from Python structure)
   app.post("/api/virtual-trial/upload", async (req, res) => {
@@ -1189,21 +1014,51 @@ async function startServer() {
     // Kick off async generation so the frontend can poll /status.
     void (async () => {
       try {
-        const prompt = `person wearing fashionable garment, perfect fit, high quality, realistic, ${(job.prompt || "").toString() || "stylish outfit"}`;
-        const resultBuffer = await generateStableDiffusionImageBuffer({
-          prompt: prompt,
-          initImage: job.user_image,
-          force: false,
+        const apiKey = getGeminiApiKey();
+        if (!apiKey) {
+          throw new Error("Gemini API key is not configured on the server.");
+        }
+
+        const ai = new GoogleGenAI({ apiKey });
+        const userBase64 = job.user_image.split(",")[1] || job.user_image;
+        const clothBase64 = job.cloth_image.split(",")[1] || job.cloth_image;
+        const promptText = job.prompt
+          ? job.prompt
+          : `You are a Virtual Fashion Stylist. Use the garment image to dress the person from the user image. Preserve the person's face, skin tone, hair, body shape, and original background. Replace the current top clothing entirely with the new garment, and render realistic fabric drape, folds, shadows, and highlights to match the lighting. Return only the final high-resolution composite image.`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash-image",
+          contents: {
+            parts: [
+              { text: "Base image (person):" },
+              { inlineData: { data: userBase64, mimeType: "image/png" } },
+              { text: "Garment image:" },
+              { inlineData: { data: clothBase64, mimeType: "image/png" } },
+              { text: promptText },
+            ],
+          },
         });
 
+        let generatedBase64: string | null = null;
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+          if (part.inlineData?.data) {
+            generatedBase64 = part.inlineData.data;
+            break;
+          }
+        }
+
+        if (!generatedBase64) {
+          throw new Error("Gemini did not return a generated image.");
+        }
+
         job.status = "completed";
-        job.result_url = `data:image/png;base64,${resultBuffer.toString(
-          "base64",
-        )}`;
+        job.result_url = `data:image/png;base64,${generatedBase64}`;
         job.completed_at = new Date().toISOString();
-      } catch (e: any) {
+      } catch (geminiError: any) {
+        console.warn("Gemini try-on failed:", geminiError?.message);
         job.status = "failed";
-        job.error = e?.message || "AI processing failed";
+        job.error = `Gemini try-on failed: ${geminiError?.message}`;
+        job.completed_at = new Date().toISOString();
       }
     })();
 
@@ -1220,6 +1075,7 @@ async function startServer() {
       created_at: job.created_at,
       completed_at: job.completed_at,
       error: job.error,
+      note: job.note,
     });
   });
 
@@ -1243,7 +1099,7 @@ async function startServer() {
   app.post("/api/virtual-trial/preview", async (req, res) => {
     try {
       const { user_image, cloth_image } = req.body;
-      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+      const apiKey = getGeminiApiKey();
       if (!apiKey) throw new Error("API Key missing");
       const ai = new GoogleGenAI({ apiKey });
 
@@ -1516,46 +1372,50 @@ async function startServer() {
   app.post("/api/tryon", async (req, res) => {
     try {
       const { person_image, garment_image } = req.body;
+      const geminiKey = getGeminiApiKey();
 
-      console.log(
-        "Starting Virtual Try-On with Hugging Face Stable Diffusion...",
-      );
+      if (!geminiKey) {
+        throw new Error("Gemini API key is not configured on the server.");
+      }
 
-      // Try Hugging Face Stable Diffusion first
       const prompt = `KEEP EXACT SAME PERSON, only change clothing to ${req.body.prompt || "stylish garment"}, same face, same hairstyle, same body, same pose, same skin tone, only replace shirt, maintain identity perfectly, high quality, realistic lighting`;
 
-      try {
-        const result = await generateStableDiffusionImageBuffer({
-          prompt: prompt,
-          initImage: person_image, // Use person image as init for better results
-          force: false,
-        });
+      console.log("Starting Virtual Try-On with Gemini image generation...");
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
+      const personBase64 = person_image.split(",")[1] || person_image;
+      const garmentBase64 = garment_image.split(",")[1] || garment_image;
 
-        // Convert buffer to base64 for response
-        const base64Result = result.toString("base64");
-        const dataUrl = `data:image/png;base64,${base64Result}`;
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-image",
+        contents: {
+          parts: [
+            { text: "Base image (person):" },
+            { inlineData: { data: personBase64, mimeType: "image/png" } },
+            { text: "Garment image:" },
+            { inlineData: { data: garmentBase64, mimeType: "image/png" } },
+            { text: prompt },
+          ],
+        },
+      });
 
-        console.log(
-          "Virtual Try-On Complete (using Hugging Face Stable Diffusion)",
-        );
-        res.json({
-          result: dataUrl,
-          note: "AI model limitation: Text-to-image models create new images rather than modifying existing person. For true virtual try-on, specialized garment transfer models are needed.",
-          suggestion:
-            "Current result shows AI-generated person wearing requested garment style. Original person identity is not preserved due to model limitations.",
-        });
-      } catch (hfError: any) {
-        console.log("Hugging Face failed, using fallback:", hfError.message);
-
-        // Final fallback: Return person image with note
-        const fallbackResult = person_image || garment_image;
-        res.json({
-          result: fallbackResult,
-          fallback: true,
-          message:
-            "Using fallback - please configure HF_API_KEY for AI processing",
-        });
+      let generatedBase64: string | null = null;
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData?.data) {
+          generatedBase64 = part.inlineData.data;
+          break;
+        }
       }
+
+      if (!generatedBase64) {
+        throw new Error("Gemini did not return a generated image.");
+      }
+
+      const dataUrl = `data:image/png;base64,${generatedBase64}`;
+      console.log("Virtual Try-On Complete (using Gemini)");
+      res.json({
+        result: dataUrl,
+        note: "AI-generated garment transfer completed using Gemini image generation.",
+      });
     } catch (e: any) {
       console.error("Virtual Try-On Error:", e);
       res.status(500).json({ error: e.message });
@@ -1568,14 +1428,17 @@ async function startServer() {
   });
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static("dist"));
+    app.use(express.static('dist'));
   }
 
   app.listen(PORT, "0.0.0.0", () => {

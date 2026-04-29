@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Camera, Upload, Sparkles, Download, Save, Trash2, Palette, Maximize, Scissors, Wand2, Info, CheckCircle, X, Shirt, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as fabric from 'fabric';

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ArrowLeft, Download, Trash2, Save, Check, Calendar, Image } from 'lucide-react';
 import GlassCard from '../components/GlassCard';

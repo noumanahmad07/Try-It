@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate } from 'react-router-dom';
 import { Sparkles, ChevronLeft, Upload, Download, Image as ImageIcon, Wand2, Loader2, RefreshCw, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import GlassCard from '../components/GlassCard';

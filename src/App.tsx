@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Routes, Route, useNavigate, useLocation } from "react-router";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronLeft } from "lucide-react";
 import { auth } from "./firebase";

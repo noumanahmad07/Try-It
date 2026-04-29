@@ -7,11 +7,183 @@ import html2canvas from 'html2canvas';
 import confetti from 'canvas-confetti';
 import { Type } from "@google/genai";
 import { QRCodeSVG } from 'qrcode.react';
+import { Pose } from '@mediapipe/pose';
+import { getGeminiAI, getGeminiKey, isGeminiConfigured } from '../utils/geminiConfig';
+import { buildTryOnPrompt } from '../utils/tryOnPrompt';
+import GlassCard from '../components/GlassCard';
 import { vibrate, cn, useVoiceCommand, withRetry } from '../lib/utils';
 import { BodyAnalysis } from '../types';
-import { getGeminiAI, getGeminiKey, isGeminiConfigured } from "../utils/geminiConfig";
-import { buildTryOnPrompt } from "../utils/tryOnPrompt";
-import GlassCard from '../components/GlassCard';
+
+const loadImage = async (src: string): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err);
+    img.src = src;
+  });
+};
+
+const generateFallbackOverlay = async (
+  personSrc: string,
+  garmentSrc: string,
+): Promise<string> => {
+  const personImg = await loadImage(personSrc);
+  const garmentImg = await loadImage(garmentSrc);
+
+  const canvas = document.createElement('canvas');
+  const width = personImg.width;
+  const height = personImg.height;
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Unable to create canvas context');
+
+  ctx.drawImage(personImg, 0, 0, width, height);
+
+  const poseLandmarks = await detectPoseLandmarks(personImg).catch((err) => {
+    console.warn('Pose detection failed, falling back to centered overlay', err);
+    return null;
+  });
+
+  const garmentCanvas = document.createElement('canvas');
+  garmentCanvas.width = garmentImg.width;
+  garmentCanvas.height = garmentImg.height;
+  const garmentCtx = garmentCanvas.getContext('2d');
+  if (!garmentCtx) throw new Error('Unable to create garment canvas context');
+
+  garmentCtx.drawImage(garmentImg, 0, 0);
+  removeWhiteBackground(garmentCtx, garmentImg.width, garmentImg.height);
+
+  const processedGarment = await loadImage(garmentCanvas.toDataURL('image/png'));
+  const placement = estimateGarmentPlacement(
+    poseLandmarks,
+    width,
+    height,
+    processedGarment,
+  );
+
+  ctx.save();
+  ctx.translate(placement.x + placement.width / 2, placement.y + placement.height / 2);
+  ctx.rotate(placement.rotation);
+  ctx.globalAlpha = 0.98;
+  ctx.drawImage(
+    processedGarment,
+    -placement.width / 2,
+    -placement.height / 2,
+    placement.width,
+    placement.height,
+  );
+  ctx.restore();
+
+  return canvas.toDataURL('image/png');
+};
+
+const detectPoseLandmarks = async (image: HTMLImageElement) => {
+  return new Promise<any[] | null>((resolve) => {
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.4,
+      minTrackingConfidence: 0.4,
+    });
+
+    pose.onResults((results) => {
+      pose.close();
+      resolve(results.poseLandmarks || null);
+    });
+
+    pose.send({ image }).catch((err) => {
+      console.warn('Pose analysis error', err);
+      pose.close();
+      resolve(null);
+    });
+  });
+};
+
+const removeWhiteBackground = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+) => {
+  try {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    const threshold = 240;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      if (r >= threshold && g >= threshold && b >= threshold) {
+        data[i + 3] = 0;
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  } catch (err) {
+    console.warn('Failed to remove garment background', err);
+  }
+};
+
+const estimateGarmentPlacement = (
+  landmarks: any[] | null,
+  personWidth: number,
+  personHeight: number,
+  garmentImg: HTMLImageElement,
+) => {
+  const defaultWidth = Math.min(personWidth * 0.85, garmentImg.width * 1.1);
+  const defaultHeight = (garmentImg.height / garmentImg.width) * defaultWidth;
+
+  if (!landmarks || landmarks.length === 0) {
+    return {
+      x: (personWidth - defaultWidth) / 2,
+      y: personHeight * 0.18,
+      width: defaultWidth,
+      height: defaultHeight,
+      rotation: 0,
+    };
+  }
+
+  const leftShoulder = landmarks[11];
+  const rightShoulder = landmarks[12];
+  const leftHip = landmarks[23];
+  const rightHip = landmarks[24];
+
+  if (!leftShoulder || !rightShoulder) {
+    return {
+      x: (personWidth - defaultWidth) / 2,
+      y: personHeight * 0.18,
+      width: defaultWidth,
+      height: defaultHeight,
+      rotation: 0,
+    };
+  }
+
+  const leftX = leftShoulder.x * personWidth;
+  const leftY = leftShoulder.y * personHeight;
+  const rightX = rightShoulder.x * personWidth;
+  const rightY = rightShoulder.y * personHeight;
+
+  const shoulderCenterX = (leftX + rightX) / 2;
+  const shoulderCenterY = (leftY + rightY) / 2;
+  const shoulderDistance = Math.hypot(rightX - leftX, rightY - leftY);
+  const torsoBottomY = ((leftHip?.y || 0.65) + (rightHip?.y || 0.65)) / 2 * personHeight;
+  const torsoHeight = Math.max(torsoBottomY - shoulderCenterY, personHeight * 0.25);
+
+  const width = Math.min(shoulderDistance * 1.5, defaultWidth);
+  const height = Math.min(torsoHeight * 1.1, defaultHeight);
+  const rotation = Math.atan2(rightY - leftY, rightX - leftX);
+  const x = shoulderCenterX - width / 2;
+  const y = shoulderCenterY - height * 0.2;
+
+  return { x, y, width, height, rotation };
+};
 
 interface TryOnProps {
   onBack: () => void;
@@ -293,13 +465,14 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
       let status = 'processing';
       let attempts = 0;
       const maxAttempts = 90; // allow slower AI generation
+      let statusData: any = null;
 
       while (status === 'processing' && attempts < maxAttempts) {
         attempts++;
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
+
         const statusRes = await fetch(`/api/virtual-trial/status/${job_id}`);
-        const statusData = await statusRes.json();
+        statusData = await statusRes.json();
         status = statusData.status;
 
         if (status === 'failed') {
@@ -309,6 +482,18 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
 
       if (status !== 'completed') {
         throw new Error("Processing timed out. Please try again.");
+      }
+
+      if (statusData?.note?.toLowerCase().includes('fallback')) {
+        const fallbackImage = await generateFallbackOverlay(pImg, gImg).catch((err) => {
+          console.warn('Fallback overlay failed:', err);
+          return pImg;
+        });
+
+        setResult(fallbackImage);
+        setStep(3);
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        return;
       }
 
       // 4. Get Result

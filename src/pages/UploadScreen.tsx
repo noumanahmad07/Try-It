@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   Upload,
@@ -109,8 +109,19 @@ export default function UploadScreen() {
         }),
       );
 
-      const data = JSON.parse(response.text || "{}");
-      setAnalysis(data);
+      const data = JSON.parse(response.text || "{}") as any;
+      const normalizedAnalysis = {
+        bodyType: typeof data.bodyType === "string" ? data.bodyType : "Unknown",
+        skinTone: typeof data.skinTone === "string" ? data.skinTone : "Unknown",
+        suggestedSize:
+          typeof data.suggestedSize === "string" ? data.suggestedSize : "Unknown",
+        colorPalette: Array.isArray(data.colorPalette)
+          ? data.colorPalette.filter(
+              (item: any) => typeof item === "string",
+            )
+          : [],
+      };
+      setAnalysis(normalizedAnalysis);
       triggerHaptic("success");
     } catch (error: any) {
       console.error("Analysis failed:", error);
@@ -386,15 +397,15 @@ export default function UploadScreen() {
                               </div>
                             </div>
                             <div className="flex gap-1">
-                              {analysis.colorPalette.map(
-                                (color: string, i: number) => (
-                                  <div
-                                    key={i}
-                                    className="w-4 h-4 rounded-full border border-white/10"
-                                    style={{ backgroundColor: color }}
-                                  />
-                                ),
-                              )}
+                              {(Array.isArray(analysis.colorPalette)
+                                ? analysis.colorPalette
+                                : []).map((color: string, i: number) => (
+                                <div
+                                  key={i}
+                                  className="w-4 h-4 rounded-full border border-white/10"
+                                  style={{ backgroundColor: color }}
+                                />
+                              ))}
                             </div>
                           </div>
                         )}

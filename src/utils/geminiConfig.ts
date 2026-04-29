@@ -1,7 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 
 export const getGeminiKey = () => {
-  const key = process.env.GEMINI_API_KEY;
+  const key =
+    process.env.API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY;
   return typeof key === "string" ? key.trim() : "";
 };
 

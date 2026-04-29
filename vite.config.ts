@@ -13,6 +13,7 @@ export default defineConfig(({mode}) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        '@google/genai': path.resolve(__dirname, 'src/lib/genai-browser-shim.ts'),
       },
     },
     server: {

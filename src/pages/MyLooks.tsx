@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router";
+import { Link } from "react-router-dom";
 import { ArrowLeft, Trash2, Download, Share2, Heart } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import { motion, AnimatePresence } from "motion/react";

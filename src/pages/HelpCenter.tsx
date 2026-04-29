@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ArrowLeft, HelpCircle, Mail, Phone, MessageCircle, Book, ExternalLink } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
@@ -108,8 +108,9 @@ export default function HelpCenter() {
 
         {/* Help Categories */}
         {helpCategories.map((category, index) => (
-          <GlassCard key={category.title} className="p-6">
-            <motion.h3
+          <div key={category.title}>
+            <GlassCard className="p-6">
+              <motion.h3
               className="text-lg font-semibold mb-4 flex items-center gap-2"
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -138,6 +139,7 @@ export default function HelpCenter() {
               ))}
             </div>
           </GlassCard>
+        </div>
         ))}
 
         {/* Contact Support */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Eye, EyeOff, Lock, ArrowLeft, CheckCircle } from 'lucide-react';
 import GlassCard from '../components/GlassCard';

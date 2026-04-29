@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Share2, Home, Sparkles, Move, RotateCw, ZoomIn, Palette, Loader2, Wand2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import GlassCard from "../components/GlassCard";

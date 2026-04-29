@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router';
+import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Mail, ArrowLeft, Send } from 'lucide-react';
 import GlassCard from '../components/GlassCard';

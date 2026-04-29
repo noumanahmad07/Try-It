@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ArrowLeft, RefreshCw, Shield } from 'lucide-react';
 import GlassCard from '../components/GlassCard';

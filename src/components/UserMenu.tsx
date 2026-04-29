@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router";
+import { Link } from "react-router-dom";
 import { LogOut, Settings } from "lucide-react";
 import GlassCard from "./GlassCard";
 import { auth } from "../firebase";
