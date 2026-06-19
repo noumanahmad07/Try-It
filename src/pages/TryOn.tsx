@@ -7,9 +7,8 @@ import html2canvas from 'html2canvas';
 import confetti from 'canvas-confetti';
 import { Type } from "@google/genai";
 import { QRCodeSVG } from 'qrcode.react';
-import { Pose } from '@mediapipe/pose';
 import { getGeminiAI, getGeminiKey, isGeminiConfigured } from '../utils/geminiConfig';
-import { buildTryOnPrompt } from '../utils/tryOnPrompt';
+import { buildGarmentDescription } from '../utils/tryOnPrompt';
 import GlassCard from '../components/GlassCard';
 import { vibrate, cn, useVoiceCommand, withRetry } from '../lib/utils';
 import { BodyAnalysis } from '../types';
@@ -24,167 +23,6 @@ const loadImage = async (src: string): Promise<HTMLImageElement> => {
   });
 };
 
-const generateFallbackOverlay = async (
-  personSrc: string,
-  garmentSrc: string,
-): Promise<string> => {
-  const personImg = await loadImage(personSrc);
-  const garmentImg = await loadImage(garmentSrc);
-
-  const canvas = document.createElement('canvas');
-  const width = personImg.width;
-  const height = personImg.height;
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Unable to create canvas context');
-
-  ctx.drawImage(personImg, 0, 0, width, height);
-
-  const poseLandmarks = await detectPoseLandmarks(personImg).catch((err) => {
-    console.warn('Pose detection failed, falling back to centered overlay', err);
-    return null;
-  });
-
-  const garmentCanvas = document.createElement('canvas');
-  garmentCanvas.width = garmentImg.width;
-  garmentCanvas.height = garmentImg.height;
-  const garmentCtx = garmentCanvas.getContext('2d');
-  if (!garmentCtx) throw new Error('Unable to create garment canvas context');
-
-  garmentCtx.drawImage(garmentImg, 0, 0);
-  removeWhiteBackground(garmentCtx, garmentImg.width, garmentImg.height);
-
-  const processedGarment = await loadImage(garmentCanvas.toDataURL('image/png'));
-  const placement = estimateGarmentPlacement(
-    poseLandmarks,
-    width,
-    height,
-    processedGarment,
-  );
-
-  ctx.save();
-  ctx.translate(placement.x + placement.width / 2, placement.y + placement.height / 2);
-  ctx.rotate(placement.rotation);
-  ctx.globalAlpha = 0.98;
-  ctx.drawImage(
-    processedGarment,
-    -placement.width / 2,
-    -placement.height / 2,
-    placement.width,
-    placement.height,
-  );
-  ctx.restore();
-
-  return canvas.toDataURL('image/png');
-};
-
-const detectPoseLandmarks = async (image: HTMLImageElement) => {
-  return new Promise<any[] | null>((resolve) => {
-    const pose = new Pose({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`,
-    });
-
-    pose.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      minDetectionConfidence: 0.4,
-      minTrackingConfidence: 0.4,
-    });
-
-    pose.onResults((results) => {
-      pose.close();
-      resolve(results.poseLandmarks || null);
-    });
-
-    pose.send({ image }).catch((err) => {
-      console.warn('Pose analysis error', err);
-      pose.close();
-      resolve(null);
-    });
-  });
-};
-
-const removeWhiteBackground = (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-) => {
-  try {
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-    const threshold = 240;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      if (r >= threshold && g >= threshold && b >= threshold) {
-        data[i + 3] = 0;
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  } catch (err) {
-    console.warn('Failed to remove garment background', err);
-  }
-};
-
-const estimateGarmentPlacement = (
-  landmarks: any[] | null,
-  personWidth: number,
-  personHeight: number,
-  garmentImg: HTMLImageElement,
-) => {
-  const defaultWidth = Math.min(personWidth * 0.85, garmentImg.width * 1.1);
-  const defaultHeight = (garmentImg.height / garmentImg.width) * defaultWidth;
-
-  if (!landmarks || landmarks.length === 0) {
-    return {
-      x: (personWidth - defaultWidth) / 2,
-      y: personHeight * 0.18,
-      width: defaultWidth,
-      height: defaultHeight,
-      rotation: 0,
-    };
-  }
-
-  const leftShoulder = landmarks[11];
-  const rightShoulder = landmarks[12];
-  const leftHip = landmarks[23];
-  const rightHip = landmarks[24];
-
-  if (!leftShoulder || !rightShoulder) {
-    return {
-      x: (personWidth - defaultWidth) / 2,
-      y: personHeight * 0.18,
-      width: defaultWidth,
-      height: defaultHeight,
-      rotation: 0,
-    };
-  }
-
-  const leftX = leftShoulder.x * personWidth;
-  const leftY = leftShoulder.y * personHeight;
-  const rightX = rightShoulder.x * personWidth;
-  const rightY = rightShoulder.y * personHeight;
-
-  const shoulderCenterX = (leftX + rightX) / 2;
-  const shoulderCenterY = (leftY + rightY) / 2;
-  const shoulderDistance = Math.hypot(rightX - leftX, rightY - leftY);
-  const torsoBottomY = ((leftHip?.y || 0.65) + (rightHip?.y || 0.65)) / 2 * personHeight;
-  const torsoHeight = Math.max(torsoBottomY - shoulderCenterY, personHeight * 0.25);
-
-  const width = Math.min(shoulderDistance * 1.5, defaultWidth);
-  const height = Math.min(torsoHeight * 1.1, defaultHeight);
-  const rotation = Math.atan2(rightY - leftY, rightX - leftX);
-  const x = shoulderCenterX - width / 2;
-  const y = shoulderCenterY - height * 0.2;
-
-  return { x, y, width, height, rotation };
-};
-
 interface TryOnProps {
   onBack: () => void;
   initialGarment?: string | null;
@@ -195,6 +33,8 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
   const [garmentImage, setGarmentImage] = useState<string | null>(initialGarment || null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [resultNote, setResultNote] = useState<string | null>(null);
+  const [resultEngine, setResultEngine] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(2); // 2: Processing, 3: Result
   const [analysis, setAnalysis] = useState<BodyAnalysis | null>(null);
@@ -423,83 +263,66 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
         try {
           analysisSnapshot = JSON.parse(storedAnalysis) as BodyAnalysis;
         } catch {
-          // Ignore parse errors and fall back to current state.
+          // Ignore parse errors.
         }
       }
-      const prompt = buildTryOnPrompt({
+      const prompt = buildGarmentDescription({
         garmentFileName: storedGarmentFileName,
         customPrompt: storedPrompt,
         analysis: analysisSnapshot,
         fullBodyClothingHint: storedClothingHint || undefined,
       });
 
-      // 1. Upload Images
-      console.log("Uploading images for virtual trial...");
-      const uploadRes = await fetch('/api/virtual-trial/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      console.log("Starting free AI try-on (no API keys)...");
+      const uploadRes = await fetch("/api/virtual-trial/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_image: pImg,
           cloth_image: gImg,
           prompt,
+          garment_file_name: storedGarmentFileName,
           force_generate: forceGenerate,
-        })
+        }),
       });
 
       if (!uploadRes.ok) throw new Error("Failed to upload images");
       const { job_id } = await uploadRes.json();
 
-      // 2. Start Processing
-      console.log(`Starting processing for job: ${job_id}`);
       const processRes = await fetch(`/api/virtual-trial/process/${job_id}`, {
-        method: 'POST'
+        method: "POST",
       });
 
       if (!processRes.ok) {
         const errData = await processRes.json().catch(() => ({}));
-        const msg = errData.error || "Failed to start processing";
-        throw new Error(msg);
+        throw new Error(errData.error || "Failed to start processing");
       }
 
-      // 3. Poll for Status
-      let status = 'processing';
+      let status = "processing";
       let attempts = 0;
-      const maxAttempts = 90; // allow slower AI generation
+      const maxAttempts = 180;
       let statusData: any = null;
 
-      while (status === 'processing' && attempts < maxAttempts) {
+      while (status === "processing" && attempts < maxAttempts) {
         attempts++;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         const statusRes = await fetch(`/api/virtual-trial/status/${job_id}`);
         statusData = await statusRes.json();
         status = statusData.status;
 
-        if (status === 'failed') {
-          throw new Error(statusData.error || "Processing failed");
+        if (status === "failed") {
+          throw new Error(statusData.error || "AI processing failed");
         }
       }
 
-      if (status !== 'completed') {
+      if (status !== "completed") {
         throw new Error("Processing timed out. Please try again.");
       }
 
-      if (statusData?.note?.toLowerCase().includes('fallback')) {
-        const fallbackImage = await generateFallbackOverlay(pImg, gImg).catch((err) => {
-          console.warn('Fallback overlay failed:', err);
-          return pImg;
-        });
-
-        setResult(fallbackImage);
-        setStep(3);
-        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-        return;
-      }
-
-      // 4. Get Result
       const resultRes = await fetch(`/api/virtual-trial/result/${job_id}`);
       if (!resultRes.ok) throw new Error("Failed to fetch result image");
-      
+
       const blob = await resultRes.blob();
       const generatedImage = await new Promise<string>((resolve) => {
         const reader = new FileReader();
@@ -507,14 +330,27 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
         reader.readAsDataURL(blob);
       });
 
-      if (!generatedImage) throw new Error("AI failed to generate result. Please try again with clearer photos.");
+      if (!generatedImage) {
+        throw new Error("AI failed to generate result. Please try again.");
+      }
 
+      if (statusData?.note && statusData.note.toLowerCase().includes("quota")) {
+        console.warn("Try-on note:", statusData.note);
+      }
+
+      setResultNote(statusData?.note || null);
+      setResultEngine(statusData?.engine || null);
       setResult(generatedImage);
       setStep(3);
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      if (statusData?.engine === "free_gradio" || statusData?.engine === "gemini" || statusData?.engine === "fashn") {
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      }
     } catch (err: any) {
-      console.error("Try-on error:", err);
-      setError(err.message || "AI processing failed.");
+      console.warn("AI try-on failed:", err);
+      setError(
+        err.message ||
+          "AI try-on is temporarily unavailable. Hugging Face GPU quota resets daily — please try again in a few hours.",
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -692,7 +528,7 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
                     <div className="absolute inset-0 flex items-center justify-center"><Sparkles className="w-12 h-12 text-brand-indigo" /></div>
                     <motion.div animate={{ top: ['0%', '100%', '0%'] }} transition={{ duration: 2, repeat: Infinity }} className="absolute left-0 right-0 h-1 bg-brand-indigo shadow-[0_0_15px_rgba(99,102,241,0.8)]" />
                   </div>
-                  <div className="space-y-4"><h3 className="text-2xl font-bold font-display">AI Analysis...</h3><ProcessingText /></div>
+                  <div className="space-y-4"><h3 className="text-2xl font-bold font-display">Free AI Styling...</h3><ProcessingText /></div>
                 </>
               )}
             </motion.div>
@@ -701,6 +537,19 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
           {step === 3 && result && (
             <motion.div key="result" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="space-y-8">
               <h2 className="text-3xl font-bold font-display text-center">See The Magic</h2>
+
+              {(resultEngine === "local_fallback" || resultNote?.toLowerCase().includes("quota")) && (
+                <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-400" />
+                  <div>
+                    <p className="font-semibold text-amber-200">Basic preview only</p>
+                    <p className="text-amber-100/80 mt-1">
+                      {resultNote ||
+                        "AI GPU quota is full right now. This is a simple overlay — not real AI try-on. Try again in a few hours for realistic results."}
+                    </p>
+                  </div>
+                </div>
+              )}
               
               <div className="space-y-4">
                 <div key={result} ref={resultRef} className="rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl bg-bg-secondary result-glow">
@@ -711,7 +560,16 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
                     handle={<div className="w-10 h-10 bg-white rounded-full shadow-xl flex items-center justify-center border-4 border-white"><div className="w-1 h-4 bg-gray-400 rounded-full mx-0.5" /><div className="w-1 h-4 bg-gray-400 rounded-full mx-0.5" /></div>}
                   />
                 </div>
-                <p className="text-center text-text-muted text-sm">Drag to compare • Real AI results</p>
+                <p className="text-center text-text-muted text-sm">
+                  Drag to compare •{" "}
+                  {resultEngine === "free_gradio"
+                    ? "AI try-on"
+                    : resultEngine === "fashn"
+                      ? "AI try-on (FASHN)"
+                      : resultEngine === "gemini"
+                        ? "AI try-on (Gemini)"
+                        : "Basic preview"}
+                </p>
               </div>
 
               {/* AI Refinement Input */}
@@ -974,11 +832,11 @@ export default function TryOn({ onBack, initialGarment }: TryOnProps) {
 function ProcessingText() {
   const [index, setIndex] = useState(0);
   const texts = [
-    "Generating AI try-on...",
-    "Detecting body type...",
-    "Analyzing skin tone...",
-    "Matching fabric...",
-    "Rendering result...",
+    "Connecting to free AI stylist...",
+    "Fitting garment on your photo...",
+    "AI is rendering realistic fabric...",
+    "Blending lighting and shadows...",
+    "Almost done...",
   ];
   useEffect(() => {
     const timer = setInterval(() => setIndex(i => (i + 1) % texts.length), 2500);

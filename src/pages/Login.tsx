@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
 import GlassCard from "../components/GlassCard";
@@ -10,6 +10,9 @@ import { signInWithPopup, signInWithEmailAndPassword } from "firebase/auth";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo =
+    (location.state as { from?: string } | null)?.from || "/";
   const [formData, setFormData] = useState<LoginCredentials>({
     email: "",
     password: "",
@@ -41,8 +44,8 @@ export default function Login() {
       const result = await signInWithPopup(auth, googleProvider);
       console.log("Google Sign-In successful:", result.user);
 
-      // On successful Google sign-in, redirect to home
-      navigate("/");
+      // On successful Google sign-in, redirect back or home
+      navigate(redirectTo);
     } catch (error: any) {
       console.error("Google Sign-In error:", error);
       console.error("Error code:", error.code);
@@ -93,8 +96,8 @@ export default function Login() {
       );
       console.log("Email/Password Sign-In successful:", result.user);
 
-      // On successful login, redirect to home
-      navigate("/");
+      // On successful login, redirect back or home
+      navigate(redirectTo);
     } catch (error: any) {
       console.error("Login error:", error);
       console.error("Error code:", error.code);

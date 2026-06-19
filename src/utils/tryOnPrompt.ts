@@ -1,53 +1,61 @@
 import type { BodyAnalysis } from "../types";
 
 function normalizeFileName(name: string | null | undefined) {
-  return (name || "").toLowerCase().replace(/\.[a-z0-9]+$/i, "").trim();
+  return (name || "")
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/i, "")
+    .trim();
 }
 
 function garmentDescriptorFromFileName(fileName: string | null | undefined) {
   const name = normalizeFileName(fileName);
-  if (!name) return "a stylish shirt";
 
-  // Simple mock logic based on common filename keywords.
-  if (name.includes("check") || name.includes("plaid")) return "a blue checkered/plaid shirt";
+  if (!name) return "shirt";
+
+  if (name.includes("navy")) return "navy blue button-down shirt";
+  if (name.includes("denim") || name.includes("chambray"))
+    return "light blue denim button-down shirt";
+  if (name.includes("check") || name.includes("plaid"))
+    return "blue checkered button-down shirt";
   if (name.includes("stripe") || name.includes("striped"))
-    return "a striped shirt";
-  if (name.includes("denim")) return "a denim shirt";
-  if (name.includes("black")) return "a black shirt";
-  if (name.includes("white")) return "a white shirt";
-  if (name.includes("red")) return "a red shirt";
-  if (name.includes("blue")) return "a blue shirt";
-  if (name.includes("green")) return "a green shirt";
-  if (name.includes("yellow")) return "a yellow shirt";
+    return "striped button-down shirt";
+  if (name.includes("black")) return "black button-down shirt";
+  if (name.includes("white")) return "white button-down shirt";
+  if (name.includes("red")) return "red button-down shirt";
+  if (name.includes("blue")) return "blue button-down shirt";
+  if (name.includes("green")) return "green button-down shirt";
 
-  return "a stylish shirt";
+  return "button-down shirt";
 }
 
-export function buildTryOnPrompt(input: {
+/**
+ * IDM-VTON garment_des must be SHORT — it becomes
+ * "model is wearing [desc]" and "a photo of [desc]".
+ * Long preservation prompts break generation and cause wrong garments.
+ */
+export function buildGarmentDescription(input: {
   garmentFileName?: string | null;
   customPrompt?: string | null;
   analysis?: BodyAnalysis | null;
   fullBodyClothingHint?: string;
 }) {
-  const descriptor = garmentDescriptorFromFileName(input.garmentFileName);
-  const clothingHint = input.fullBodyClothingHint?.trim();
+  const garmentName =
+    input.fullBodyClothingHint?.trim() ||
+    garmentDescriptorFromFileName(input.garmentFileName);
 
-  let prompt =
-    `A realistic full body image of a person wearing ${clothingHint || descriptor}, ` +
-    `perfect fit, high quality, studio lighting, natural skin, sharp focus, photorealistic.`;
-
-  if (input.analysis?.bodyType) {
-    prompt += ` Body type: ${input.analysis.bodyType}.`;
-  }
-  if (input.analysis?.skinTone) {
-    prompt += ` Skin tone: ${input.analysis.skinTone}.`;
-  }
+  let desc = `${garmentName}, long sleeve, cotton fabric, natural wrinkles`;
 
   if (input.customPrompt?.trim()) {
-    prompt += ` ${input.customPrompt.trim()}`;
+    const note = input.customPrompt.trim().slice(0, 80);
+    if (!desc.toLowerCase().includes(note.toLowerCase())) {
+      desc += `, ${note}`;
+    }
   }
 
-  // Make sure it's not empty.
-  return prompt.trim() || "A realistic full body image of a person wearing stylish clothing.";
+  return desc.slice(0, 200);
 }
 
+/** @deprecated Use buildGarmentDescription — IDM-VTON only accepts short garment text. */
+export function buildTryOnPrompt(input: Parameters<typeof buildGarmentDescription>[0]) {
+  return buildGarmentDescription(input);
+}

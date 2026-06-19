@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Check } from "lucide-react";
 import GlassCard from "../components/GlassCard";
@@ -10,6 +10,9 @@ import { signInWithPopup } from "firebase/auth";
 
 export default function Signup() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo =
+    (location.state as { from?: string } | null)?.from || "/";
   const [formData, setFormData] = useState<SignupCredentials>({
     name: "",
     email: "",
@@ -49,8 +52,8 @@ export default function Signup() {
       const result = await signInWithPopup(auth, googleProvider);
       console.log("Google Sign-Up successful:", result.user);
 
-      // On successful Google sign-up, redirect to home
-      navigate("/");
+      // On successful Google sign-up, redirect back or home
+      navigate(redirectTo);
     } catch (error: any) {
       console.error("Google Sign-Up error:", error);
       console.error("Error code:", error.code);

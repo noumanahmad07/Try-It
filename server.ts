@@ -5,6 +5,7 @@ import axios from "axios";
 import { GoogleGenAI } from "@google/genai";
 import crypto from "crypto";
 import { InferenceClient } from "@huggingface/inference";
+import { runTryOnCascade } from "./src/lib/tryOnCascade.ts";
 
 dotenv.config();
 // Load additional local overrides (useful for HF_API_KEY during development).
@@ -957,7 +958,7 @@ async function startServer() {
   // Virtual Trial APIs (Ported from Python structure)
   app.post("/api/virtual-trial/upload", async (req, res) => {
     try {
-      const { user_image, cloth_image, prompt, force_generate } = req.body;
+      const { user_image, cloth_image, prompt, garment_file_name, force_generate } = req.body;
       if (!user_image || !cloth_image) {
         return res
           .status(400)
@@ -971,6 +972,8 @@ async function startServer() {
         user_image,
         cloth_image,
         prompt: typeof prompt === "string" ? prompt : "",
+        garment_file_name:
+          typeof garment_file_name === "string" ? garment_file_name : "",
         force_generate: !!force_generate,
         created_at: new Date().toISOString(),
       };
@@ -1011,53 +1014,26 @@ async function startServer() {
 
     job.status = "processing";
 
-    // Kick off async generation so the frontend can poll /status.
+    // Local Python compositor — no external AI APIs.
     void (async () => {
       try {
-        const apiKey = getGeminiApiKey();
-        if (!apiKey) {
-          throw new Error("Gemini API key is not configured on the server.");
-        }
-
-        const ai = new GoogleGenAI({ apiKey });
-        const userBase64 = job.user_image.split(",")[1] || job.user_image;
-        const clothBase64 = job.cloth_image.split(",")[1] || job.cloth_image;
-        const promptText = job.prompt
-          ? job.prompt
-          : `You are a Virtual Fashion Stylist. Use the garment image to dress the person from the user image. Preserve the person's face, skin tone, hair, body shape, and original background. Replace the current top clothing entirely with the new garment, and render realistic fabric drape, folds, shadows, and highlights to match the lighting. Return only the final high-resolution composite image.`;
-
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash-image",
-          contents: {
-            parts: [
-              { text: "Base image (person):" },
-              { inlineData: { data: userBase64, mimeType: "image/png" } },
-              { text: "Garment image:" },
-              { inlineData: { data: clothBase64, mimeType: "image/png" } },
-              { text: promptText },
-            ],
-          },
+        console.log(`Running AI try-on cascade for job ${job_id}...`);
+        const result = await runTryOnCascade({
+          userImage: job.user_image,
+          clothImage: job.cloth_image,
+          prompt: job.prompt || "",
+          garmentFileName: job.garment_file_name || null,
         });
 
-        let generatedBase64: string | null = null;
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData?.data) {
-            generatedBase64 = part.inlineData.data;
-            break;
-          }
-        }
-
-        if (!generatedBase64) {
-          throw new Error("Gemini did not return a generated image.");
-        }
-
         job.status = "completed";
-        job.result_url = `data:image/png;base64,${generatedBase64}`;
+        job.result_url = result.dataUrl;
+        job.engine = result.engine;
+        job.note = result.note;
         job.completed_at = new Date().toISOString();
-      } catch (geminiError: any) {
-        console.warn("Gemini try-on failed:", geminiError?.message);
+      } catch (err: any) {
+        console.warn("Try-on failed:", err?.message);
         job.status = "failed";
-        job.error = `Gemini try-on failed: ${geminiError?.message}`;
+        job.error = err?.message || "AI try-on failed.";
         job.completed_at = new Date().toISOString();
       }
     })();
@@ -1076,6 +1052,7 @@ async function startServer() {
       completed_at: job.completed_at,
       error: job.error,
       note: job.note,
+      engine: job.engine,
     });
   });
 
@@ -1372,49 +1349,23 @@ async function startServer() {
   app.post("/api/tryon", async (req, res) => {
     try {
       const { person_image, garment_image } = req.body;
-      const geminiKey = getGeminiApiKey();
-
-      if (!geminiKey) {
-        throw new Error("Gemini API key is not configured on the server.");
+      if (!person_image || !garment_image) {
+        return res
+          .status(400)
+          .json({ error: "Both person_image and garment_image are required" });
       }
 
-      const prompt = `KEEP EXACT SAME PERSON, only change clothing to ${req.body.prompt || "stylish garment"}, same face, same hairstyle, same body, same pose, same skin tone, only replace shirt, maintain identity perfectly, high quality, realistic lighting`;
-
-      console.log("Starting Virtual Try-On with Gemini image generation...");
-      const ai = new GoogleGenAI({ apiKey: geminiKey });
-      const personBase64 = person_image.split(",")[1] || person_image;
-      const garmentBase64 = garment_image.split(",")[1] || garment_image;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
-        contents: {
-          parts: [
-            { text: "Base image (person):" },
-            { inlineData: { data: personBase64, mimeType: "image/png" } },
-            { text: "Garment image:" },
-            { inlineData: { data: garmentBase64, mimeType: "image/png" } },
-            { text: prompt },
-          ],
-        },
+      console.log("Starting AI virtual try-on cascade...");
+      const result = await runTryOnCascade({
+        userImage: person_image,
+        clothImage: garment_image,
+        prompt: typeof req.body.prompt === "string" ? req.body.prompt : "",
+        garmentFileName: null,
       });
-
-      let generatedBase64: string | null = null;
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData?.data) {
-          generatedBase64 = part.inlineData.data;
-          break;
-        }
-      }
-
-      if (!generatedBase64) {
-        throw new Error("Gemini did not return a generated image.");
-      }
-
-      const dataUrl = `data:image/png;base64,${generatedBase64}`;
-      console.log("Virtual Try-On Complete (using Gemini)");
       res.json({
-        result: dataUrl,
-        note: "AI-generated garment transfer completed using Gemini image generation.",
+        result: result.dataUrl,
+        engine: result.engine,
+        note: result.note,
       });
     } catch (e: any) {
       console.error("Virtual Try-On Error:", e);

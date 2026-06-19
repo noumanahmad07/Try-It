@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "setup:python": "python3 -m venv python/.venv && python/.venv/bin/pip install -r python/requirements.txt"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

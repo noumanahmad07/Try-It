@@ -18,9 +18,10 @@ import GlassCard from "../components/GlassCard";
 import { motion, AnimatePresence } from "motion/react";
 import { triggerHaptic } from "../utils/haptics";
 import { compressImage, blobToDataURL } from "../utils/imageCompression";
-import { Type } from "@google/genai";
-import { withRetry, cn } from "../lib/utils";
-import { getGeminiAI, isGeminiConfigured } from "../utils/geminiConfig";
+import { cn } from "../lib/utils";
+import { analyzeBodyLocally } from "../utils/localBodyAnalysis";
+import { canGuestTryOn, incrementGuestTryOnCount } from "../utils/guestTryOn";
+import LoginRequiredModal from "../components/LoginRequiredModal";
 import { auth } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -37,6 +38,7 @@ export default function UploadScreen() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState("");
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   // Track user authentication state
   useEffect(() => {
@@ -65,77 +67,12 @@ export default function UploadScreen() {
       setAnalysis(null);
       setAnalysisError(null);
 
-      if (!isGeminiConfigured()) {
-        setAnalysisError(
-          "AI analysis is unavailable right now (Gemini not configured). You can still continue.",
-        );
-        setIsAnalyzing(false);
-        return;
-      }
-
-      const ai = getGeminiAI();
-      const base64Data = imageData.split(",")[1];
-
-      const response = await withRetry(() =>
-        ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: [
-            { inlineData: { data: base64Data, mimeType: "image/jpeg" } },
-            {
-              text: "Analyze this person's body type and skin tone for fashion recommendations. Return JSON: bodyType, skinTone, suggestedSize, colorPalette (3 hex colors).",
-            },
-          ],
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                bodyType: { type: Type.STRING },
-                skinTone: { type: Type.STRING },
-                suggestedSize: { type: Type.STRING },
-                colorPalette: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                },
-              },
-              required: [
-                "bodyType",
-                "skinTone",
-                "suggestedSize",
-                "colorPalette",
-              ],
-            },
-          },
-        }),
-      );
-
-      const data = JSON.parse(response.text || "{}") as any;
-      const normalizedAnalysis = {
-        bodyType: typeof data.bodyType === "string" ? data.bodyType : "Unknown",
-        skinTone: typeof data.skinTone === "string" ? data.skinTone : "Unknown",
-        suggestedSize:
-          typeof data.suggestedSize === "string" ? data.suggestedSize : "Unknown",
-        colorPalette: Array.isArray(data.colorPalette)
-          ? data.colorPalette.filter(
-              (item: any) => typeof item === "string",
-            )
-          : [],
-      };
-      setAnalysis(normalizedAnalysis);
+      const result = await analyzeBodyLocally(imageData);
+      setAnalysis(result);
       triggerHaptic("success");
-    } catch (error: any) {
+    } catch (error) {
       console.error("Analysis failed:", error);
-      if (
-        error.message?.includes("quota") ||
-        error.status === "RESOURCE_EXHAUSTED" ||
-        error.message?.includes("429")
-      ) {
-        setAnalysisError(
-          "AI Quota exceeded. You can still proceed, but results might be less accurate.",
-        );
-      } else {
-        setAnalysisError("AI Analysis failed. You can still proceed manually.");
-      }
+      setAnalysisError("Photo analysis failed. You can still continue.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -176,36 +113,43 @@ export default function UploadScreen() {
     }
   };
 
+  const proceedToProcessing = () => {
+    if (!bodyPhoto || !garmentPhoto) return;
+
+    try {
+      triggerHaptic("medium");
+      sessionStorage.setItem("bodyPhoto", bodyPhoto);
+      sessionStorage.setItem("garmentPhoto", garmentPhoto);
+      if (garmentFileName) {
+        sessionStorage.setItem("garmentFileName", garmentFileName);
+      }
+      if (analysis) {
+        sessionStorage.setItem("bodyAnalysis", JSON.stringify(analysis));
+      }
+      if (customPrompt) {
+        sessionStorage.setItem("customPrompt", customPrompt);
+      }
+      navigate("/processing");
+    } catch (error) {
+      console.error("Session storage error:", error);
+      alert(
+        "The photos are too large to process. Please try smaller images or a different browser.",
+      );
+    }
+  };
+
   const handleContinue = () => {
-    // Check if user is authenticated
+    if (!bodyPhoto || !garmentPhoto) return;
+
     if (!user) {
-      alert("Please login first to generate try-on");
-      navigate("/login");
-      return;
+      if (!canGuestTryOn()) {
+        setShowLoginModal(true);
+        return;
+      }
+      incrementGuestTryOnCount();
     }
 
-    if (bodyPhoto && garmentPhoto) {
-      try {
-        triggerHaptic("medium");
-        sessionStorage.setItem("bodyPhoto", bodyPhoto);
-        sessionStorage.setItem("garmentPhoto", garmentPhoto);
-        if (garmentFileName) {
-          sessionStorage.setItem("garmentFileName", garmentFileName);
-        }
-        if (analysis) {
-          sessionStorage.setItem("bodyAnalysis", JSON.stringify(analysis));
-        }
-        if (customPrompt) {
-          sessionStorage.setItem("customPrompt", customPrompt);
-        }
-        navigate("/processing");
-      } catch (error) {
-        console.error("Session storage error:", error);
-        alert(
-          "The photos are too large to process. Please try smaller images or a different browser.",
-        );
-      }
-    }
+    proceedToProcessing();
   };
 
   return (
@@ -369,7 +313,7 @@ export default function UploadScreen() {
                           <div className="flex items-center gap-3">
                             <div className="w-5 h-5 border-2 border-[#ec4899] border-t-transparent rounded-full animate-spin" />
                             <p className="text-[13px] text-[#a1a1aa]">
-                              AI is analyzing your body type...
+                              Analyzing your photo...
                             </p>
                           </div>
                         ) : analysisError ? (
@@ -389,7 +333,7 @@ export default function UploadScreen() {
                               </div>
                               <div>
                                 <p className="text-[11px] text-[#a1a1aa] uppercase tracking-wider font-bold">
-                                  AI Analysis Complete
+                                  Analysis Complete
                                 </p>
                                 <p className="text-[14px] font-semibold">
                                   {analysis.bodyType} • {analysis.skinTone}
@@ -509,7 +453,7 @@ export default function UploadScreen() {
             </div>
             <GlassCard className="p-4 bg-white/5 border-white/10">
               <textarea
-                placeholder="e.g. 'Add a retro filter', 'Make it look like I'm in Paris', 'Change background to a modern loft'"
+                placeholder="e.g. 'Navy blue shirt open over white t-shirt, rolled sleeves'"
                 className="w-full bg-transparent border-none outline-none text-[14px] text-white placeholder:text-[#a1a1aa] resize-none h-20"
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
@@ -560,6 +504,12 @@ export default function UploadScreen() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <LoginRequiredModal
+          open={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
+          returnTo="/upload"
+        />
 
         {/* Tips Modal */}
         <AnimatePresence>
